@@ -1,0 +1,2070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ultimate Football Manager</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            arcade: ['Orbitron', 'sans-serif'],
+            fut: ['Rajdhani', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #090d16; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+    /* FUT Card Frame Glows */
+    .card-bronze {
+      background: linear-gradient(135deg, #3d2212 0%, #783f1d 50%, #2a150a 100%);
+      border: 2px solid #b46128;
+      box-shadow: 0 4px 15px rgba(180, 97, 40, 0.25);
+    }
+    .card-silver {
+      background: linear-gradient(135deg, #2a3342 0%, #64748b 50%, #1e293b 100%);
+      border: 2px solid #94a3b8;
+      box-shadow: 0 4px 15px rgba(148, 163, 184, 0.25);
+    }
+    .card-gold {
+      background: linear-gradient(135deg, #423004 0%, #b45309 30%, #f59e0b 70%, #78350f 100%);
+      border: 2px solid #fbbf24;
+      box-shadow: 0 4px 20px rgba(251, 191, 36, 0.35);
+    }
+    .card-prime {
+      background: linear-gradient(135deg, #091e3a 0%, #1e1b4b 30%, #4c1d95 70%, #030712 100%);
+      border: 2px solid #38bdf8;
+      box-shadow: 0 0 25px rgba(56, 189, 248, 0.6), inset 0 0 15px rgba(168, 85, 247, 0.4);
+    }
+    .card-wc-winner {
+      background: linear-gradient(135deg, #451a03 0%, #b45309 30%, #f59e0b 60%, #991b1b 100%);
+      border: 2px solid #f59e0b;
+      box-shadow: 0 0 25px rgba(245, 158, 11, 0.6), inset 0 0 15px rgba(220, 38, 38, 0.4);
+    }
+    .card-wc-runner {
+      background: linear-gradient(135deg, #0f172a 0%, #334155 50%, #1e293b 100%);
+      border: 2px solid #cbd5e1;
+      box-shadow: 0 0 20px rgba(203, 213, 225, 0.4);
+    }
+    .card-wc-best {
+      background: linear-gradient(135deg, #0284c7 0%, #0369a1 40%, #d97706 100%);
+      border: 2px solid #38bdf8;
+      box-shadow: 0 0 22px rgba(56, 189, 248, 0.5), inset 0 0 10px rgba(217, 119, 6, 0.4);
+    }
+    .card-ucl-winner {
+      background: linear-gradient(135deg, #090d16 0%, #1e1b4b 50%, #1d4ed8 100%);
+      border: 2px solid #60a5fa;
+      box-shadow: 0 0 22px rgba(96, 165, 250, 0.5), inset 0 0 12px rgba(30, 27, 75, 0.8);
+    }
+    .card-ballondor {
+      background: linear-gradient(135deg, #451a03 0%, #b45309 30%, #fef08a 60%, #78350f 100%);
+      border: 2px solid #fef08a;
+      box-shadow: 0 0 25px rgba(254, 240, 138, 0.6), inset 0 0 15px rgba(245, 158, 11, 0.5);
+    }
+    .card-poty {
+      background: linear-gradient(135deg, #2e1065 0%, #6b21a8 40%, #c084fc 70%, #3b0764 100%);
+      border: 2px solid #e9d5ff;
+      box-shadow: 0 0 25px rgba(192, 132, 252, 0.6), inset 0 0 15px rgba(107, 33, 168, 0.5);
+    }
+
+    /* Grass Pitch Background */
+    .soccer-pitch {
+      background-color: #0b2617;
+      background-image: 
+        repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(0, 0, 0, 0.15) 40px, rgba(0, 0, 0, 0.15) 80px),
+        radial-gradient(circle at center, #133c25 0%, #081a10 100%);
+    }
+
+    .pitch-line { border: 2px solid rgba(255, 255, 255, 0.2); }
+    .pitch-circle { border: 2px solid rgba(255, 255, 255, 0.2); }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+  </style>
+</head>
+
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col selection:bg-emerald-500 selection:text-slate-950">
+
+  <header class="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800/80 shadow-2xl">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      
+      <!-- Logo & Club Status -->
+      <div class="flex items-center space-x-3">
+        <div id="headerClubBadge" class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-cyan-500 flex items-center justify-center text-slate-950 font-black text-xl shadow-lg shadow-emerald-500/20">
+          <i id="headerClubBadgeIcon" class="fa-solid fa-trophy"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <div id="headerClubName" class="font-fut text-lg font-bold tracking-wide text-white leading-none">
+              APEX FOOTBALL CLUB
+            </div>
+            <button onclick="openClubCustomizer()" title="Customize Club Identity" class="text-slate-400 hover:text-emerald-400 text-xs transition">
+              <i class="fa-solid fa-pen-to-square"></i>
+            </button>
+          </div>
+          <div class="flex items-center gap-2 mt-1">
+            <span id="headerLeagueFlag" class="text-sm">🏴󠁧󠁢󠁥󠁮󠁧󠁿</span>
+            <span id="headerLeagueTier" class="text-xs font-semibold text-emerald-400 uppercase tracking-wider">
+              National League (Division 4)
+            </span>
+            <span class="text-slate-600">•</span>
+            <span id="headerStadiumName" class="text-xs text-slate-400 truncate max-w-[110px]">
+              Apex Arena
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Financials & Team OVR Stats -->
+      <div class="flex items-center space-x-3 md:space-x-6">
+        <div class="bg-slate-950/80 px-4 py-1.5 rounded-xl border border-emerald-500/30 flex items-center gap-2.5 shadow-inner">
+          <div class="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">
+            <i class="fa-solid fa-dollar-sign"></i>
+          </div>
+          <div>
+            <div class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Budget</div>
+            <div id="userBudget" class="font-arcade text-sm md:text-base font-bold text-emerald-400">$1,000</div>
+          </div>
+        </div>
+
+        <div class="bg-slate-950/80 px-4 py-1.5 rounded-xl border border-cyan-500/30 flex items-center gap-2.5 shadow-inner">
+          <div class="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xs">
+            <i class="fa-solid fa-shield-halved"></i>
+          </div>
+          <div>
+            <div class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Squad OVR</div>
+            <div id="squadOvrDisplay" class="font-arcade text-sm md:text-base font-bold text-cyan-400">64</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Desktop Nav Tabs -->
+      <nav id="navTabs" class="hidden md:flex items-center space-x-1 bg-slate-950/60 p-1 rounded-xl border border-slate-800">
+        <button onclick="switchTab('squad')" id="tabBtn-squad" class="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition flex items-center gap-2 bg-emerald-500 text-slate-950 shadow-md">
+          <i class="fa-solid fa-users"></i> Squad
+        </button>
+        <button onclick="switchTab('market')" id="tabBtn-market" class="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition flex items-center gap-2 text-slate-400 hover:text-white">
+          <i class="fa-solid fa-store"></i> Market & Packs
+        </button>
+        <button onclick="switchTab('league')" id="tabBtn-league" class="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition flex items-center gap-2 text-slate-400 hover:text-white">
+          <i class="fa-solid fa-list-ol"></i> League & Match
+        </button>
+      </nav>
+
+      <!-- Quick Action Controls -->
+      <div class="hidden lg:flex items-center gap-2">
+        <button onclick="openClubCustomizer()" title="Customize Club, Kit & Stadium" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-400 font-bold text-xs rounded-xl border border-slate-700 transition flex items-center gap-1.5">
+          <i class="fa-solid fa-shirt"></i>
+          <span>Customize</span>
+        </button>
+        <button onclick="saveGameProgress(true)" title="Quick Save Progress" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold text-xs rounded-xl border border-slate-700 transition flex items-center gap-1.5">
+          <i class="fa-solid fa-floppy-disk"></i>
+          <span>Save</span>
+        </button>
+        <button onclick="openSaveLoadModal()" title="Export/Import Save Code" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold text-xs rounded-xl border border-slate-700 transition flex items-center gap-1.5">
+          <i class="fa-solid fa-file-export"></i>
+          <span>Save Code</span>
+        </button>
+        <button onclick="goToPlayMatch()" class="px-4 py-2 bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-arcade font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-500/20 transition active:scale-95 flex items-center gap-2">
+          <i class="fa-solid fa-play"></i> PLAY MATCH
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Mobile Navigation Bar -->
+    <div class="md:hidden flex border-t border-slate-800/80 divide-x divide-slate-800 text-center">
+      <button onclick="switchTab('squad')" id="mobTabBtn-squad" class="flex-1 py-2.5 text-xs font-bold text-emerald-400 bg-slate-900 flex items-center justify-center gap-1.5 border-b-2 border-emerald-400">
+        <i class="fa-solid fa-users"></i> Squad
+      </button>
+      <button onclick="switchTab('market')" id="mobTabBtn-market" class="flex-1 py-2.5 text-xs font-bold text-slate-400 flex items-center justify-center gap-1.5">
+        <i class="fa-solid fa-store"></i> Market
+      </button>
+      <button onclick="switchTab('league')" id="mobTabBtn-league" class="flex-1 py-2.5 text-xs font-bold text-slate-400 flex items-center justify-center gap-1.5">
+        <i class="fa-solid fa-list-ol"></i> League
+      </button>
+      <button onclick="openClubCustomizer()" class="flex-1 py-2.5 text-xs font-bold text-cyan-400 bg-slate-900 flex items-center justify-center gap-1">
+        <i class="fa-solid fa-shirt"></i> Kit
+      </button>
+      <button onclick="openSaveLoadModal()" class="flex-1 py-2.5 text-xs font-bold text-amber-400 bg-slate-900 flex items-center justify-center gap-1">
+        <i class="fa-solid fa-floppy-disk"></i> Save
+      </button>
+      <button onclick="goToPlayMatch()" class="flex-1 py-2.5 text-xs font-black text-slate-950 bg-gradient-to-r from-emerald-400 to-cyan-400 flex items-center justify-center gap-1.5 font-arcade uppercase">
+        <i class="fa-solid fa-play"></i> PLAY
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN CONTENT CONTAINER -->
+  <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full">
+
+    <div id="clubSetupModal" class="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-6 relative overflow-hidden">
+        <div class="absolute -right-12 -top-12 w-40 h-40 bg-emerald-500/10 rounded-full blur-2xl"></div>
+
+        <div class="text-center space-y-2">
+          <div class="inline-flex p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-emerald-400 text-2xl mb-1">
+            <i class="fa-solid fa-futbol"></i>
+          </div>
+          <h2 class="font-arcade text-2xl font-bold text-white tracking-wide">FOUND YOUR CLUB</h2>
+          <p class="text-xs text-slate-400">Choose your home nation and name your club. You will start in the bottom division with $1,000 budget and a 64 OVR Squad.</p>
+        </div>
+
+        <div class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Club Name</label>
+            <input type="text" id="setupClubNameInput" value="Apex FC" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white font-fut text-lg focus:outline-none focus:border-emerald-500 transition" />
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Select Home Country</label>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5" id="countrySelectGrid"></div>
+          </div>
+        </div>
+
+        <button onclick="finalizeClubSetup()" class="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-arcade font-extrabold text-sm rounded-xl shadow-lg shadow-emerald-500/20 transition active:scale-95 flex items-center justify-center gap-2">
+          <span>START CAREER</span>
+          <i class="fa-solid fa-arrow-right"></i>
+        </button>
+      </div>
+    </div>
+
+    <section id="tab-squad" class="space-y-6">
+      <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
+        <div>
+          <h2 class="font-arcade text-xl md:text-2xl font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-users text-emerald-400"></i>
+            <span>STARTING XI & FORMATION</span>
+          </h2>
+          <p class="text-slate-400 text-xs md:text-sm mt-1">
+            Tap any tactical slot on the pitch or reserve player to manage your starting lineup.
+          </p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button onclick="switchTab('market')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold text-xs rounded-xl transition border border-slate-700 flex items-center gap-1.5">
+            <i class="fa-solid fa-store"></i> Buy Players
+          </button>
+          <button onclick="goToPlayMatch()" class="px-5 py-2 bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-arcade font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-500/20 transition">
+            <i class="fa-solid fa-play"></i> PLAY MATCH
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <!-- 2D Tactical Field Canvas -->
+        <div class="lg:col-span-7 bg-slate-900 rounded-2xl p-4 border border-slate-800 shadow-2xl overflow-hidden space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+            <span class="font-fut text-xs font-bold text-slate-400 uppercase tracking-widest">TACTICAL FIELD (4-3-3 FORMATION)</span>
+            <span class="text-xs font-arcade font-bold text-emerald-400">TEAM OVR: <span id="pitchOvrText">64</span></span>
+          </div>
+
+          <div class="soccer-pitch rounded-2xl p-4 relative min-h-[520px] flex flex-col justify-between border border-emerald-900/60 shadow-inner">
+            <div class="absolute inset-4 pitch-line rounded-xl pointer-events-none"></div>
+            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-28 h-28 rounded-full pitch-circle pointer-events-none"></div>
+
+            <!-- Attack Row -->
+            <div class="flex justify-around items-center z-10 pt-2">
+              <div onclick="openSlotSelector('LW')" id="slot-LW" class="cursor-pointer group"></div>
+              <div onclick="openSlotSelector('ST')" id="slot-ST" class="cursor-pointer group"></div>
+              <div onclick="openSlotSelector('RW')" id="slot-RW" class="cursor-pointer group"></div>
+            </div>
+
+            <!-- Midfield Row -->
+            <div class="flex justify-around items-center z-10 py-4">
+              <div onclick="openSlotSelector('LCM')" id="slot-LCM" class="cursor-pointer group"></div>
+              <div onclick="openSlotSelector('CAM')" id="slot-CAM" class="cursor-pointer group"></div>
+              <div onclick="openSlotSelector('RCM')" id="slot-RCM" class="cursor-pointer group"></div>
+            </div>
+
+            <!-- Defense Row -->
+            <div class="flex justify-around items-center z-10 py-2">
+              <div onclick="openSlotSelector('LB')" id="slot-LB" class="cursor-pointer group"></div>
+              <div onclick="openSlotSelector('LCB')" id="slot-LCB" class="cursor-pointer group"></div>
+              <div onclick="openSlotSelector('RCB')" id="slot-RCB" class="cursor-pointer group"></div>
+              <div onclick="openSlotSelector('RB')" id="slot-RB" class="cursor-pointer group"></div>
+            </div>
+
+            <!-- Goalkeeper Row -->
+            <div class="flex justify-center items-center z-10 pb-2">
+              <div onclick="openSlotSelector('GK')" id="slot-GK" class="cursor-pointer group"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Club Reserves & Squad Roster -->
+        <div class="lg:col-span-5 bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-4 shadow-2xl">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 class="font-arcade text-base font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-layer-group text-amber-400"></i>
+              <span>CLUB RESERVES & ROSTER</span>
+            </h3>
+            <span id="clubRosterCount" class="text-xs font-mono font-bold bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 text-slate-300">
+              11 Players
+            </span>
+          </div>
+
+          <div id="clubRosterContainer" class="space-y-2.5 max-h-[500px] overflow-y-auto pr-1"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-market" class="hidden space-y-6">
+      
+      <!-- PACK STORE SECTION -->
+      <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-5 rounded-2xl border border-indigo-500/30 shadow-2xl space-y-4">
+        <div class="flex items-center justify-between border-b border-indigo-500/20 pb-3">
+          <div>
+            <h2 class="font-arcade text-xl font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-box-open text-amber-400"></i>
+              <span>CARD PACK STORE</span>
+            </h2>
+            <p class="text-xs text-slate-400">Open 7-player packs with weighted odds! High ratings (95-98) are rarest.</p>
+          </div>
+          <span class="text-xs bg-amber-500/20 text-amber-300 font-bold px-3 py-1 rounded-full border border-amber-500/30">7 CARDS PER PACK</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-slate-950/80 p-4 rounded-xl border border-amber-500/40 flex flex-col justify-between space-y-3 relative overflow-hidden group hover:border-amber-400 transition">
+            <div class="absolute -right-8 -bottom-8 w-28 h-28 bg-amber-500/10 rounded-full blur-xl group-hover:bg-amber-500/20 transition"></div>
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="text-xs font-extrabold text-amber-400 uppercase tracking-widest">SPECIAL EDITION</div>
+                <h3 class="font-arcade text-lg font-bold text-white">2026 WORLD CUP PACK</h3>
+                <p class="text-[11px] text-slate-400">Pool of 56 World Cup stars (84 - 97 OVR)</p>
+              </div>
+              <span class="text-3xl">🏆</span>
+            </div>
+            <div class="flex items-center justify-between border-t border-slate-800 pt-3">
+              <div class="font-arcade text-lg font-bold text-emerald-400">$20,000</div>
+              <button onclick="buyPack('WC_PACK')" class="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-arcade font-extrabold text-xs rounded-xl shadow-lg transition active:scale-95">
+                OPEN PACK ($20K)
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-slate-950/80 p-4 rounded-xl border border-cyan-500/40 flex flex-col justify-between space-y-3 relative overflow-hidden group hover:border-cyan-400 transition">
+            <div class="absolute -right-8 -bottom-8 w-28 h-28 bg-cyan-500/10 rounded-full blur-xl group-hover:bg-cyan-500/20 transition"></div>
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="text-xs font-extrabold text-cyan-400 uppercase tracking-widest">LEGENDS & ICONS</div>
+                <h3 class="font-arcade text-lg font-bold text-white">PRIME ICON PACK</h3>
+                <p class="text-[11px] text-slate-400">Pool of historic legend icons (86 - 98 OVR)</p>
+              </div>
+              <span class="text-3xl">👑</span>
+            </div>
+            <div class="flex items-center justify-between border-t border-slate-800 pt-3">
+              <div class="font-arcade text-lg font-bold text-emerald-400">$45,000</div>
+              <button onclick="buyPack('ICON_PACK')" class="px-4 py-2 bg-gradient-to-r from-cyan-500 to-indigo-500 hover:from-cyan-400 hover:to-indigo-400 text-white font-arcade font-extrabold text-xs rounded-xl shadow-lg transition active:scale-95">
+                OPEN PACK ($45K)
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Market Header & Controls -->
+      <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-4 shadow-xl">
+        <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div>
+            <h2 class="font-arcade text-xl md:text-2xl font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-store text-emerald-400"></i>
+              <span>TRANSFER MARKET</span>
+            </h2>
+            <p class="text-slate-400 text-xs md:text-sm mt-1">
+              Buy real football stars. Your budget is <strong id="marketBudgetTag" class="text-emerald-400">$1,000</strong>.
+            </p>
+          </div>
+
+          <div class="w-full md:w-72 relative">
+            <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+            <input type="text" id="marketSearchInput" oninput="renderMarket()" placeholder="Search player name..." class="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition" />
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80">
+          <div class="flex flex-wrap items-center gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-slate-800 text-xs font-bold max-w-full overflow-x-auto">
+            <button onclick="setMarketTierFilter('ALL')" id="tierFilter-ALL" class="px-3 py-1.5 rounded-lg text-emerald-400 bg-slate-800 transition whitespace-nowrap">ALL</button>
+            <button onclick="setMarketTierFilter('BRONZE')" id="tierFilter-BRONZE" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-amber-600 transition whitespace-nowrap">BRONZE</button>
+            <button onclick="setMarketTierFilter('SILVER')" id="tierFilter-SILVER" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-300 transition whitespace-nowrap">SILVER</button>
+            <button onclick="setMarketTierFilter('GOLD')" id="tierFilter-GOLD" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-amber-400 transition whitespace-nowrap">GOLD</button>
+            <button onclick="setMarketTierFilter('PRIME')" id="tierFilter-PRIME" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-cyan-400 transition whitespace-nowrap">PRIME ICONS</button>
+            <button onclick="setMarketTierFilter('BALLON_DOR')" id="tierFilter-BALLON_DOR" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-amber-300 transition whitespace-nowrap flex items-center gap-1">🥇 BALLON D'OR</button>
+            <button onclick="setMarketTierFilter('PLAYER_OF_YEAR')" id="tierFilter-PLAYER_OF_YEAR" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-purple-300 transition whitespace-nowrap flex items-center gap-1">👑 PLAYER OF THE YEAR</button>
+            <button onclick="setMarketTierFilter('WC_WINNERS')" id="tierFilter-WC_WINNERS" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-amber-400 transition whitespace-nowrap flex items-center gap-1">🏆 WC WINNERS '26</button>
+            <button onclick="setMarketTierFilter('WC_RUNNERS')" id="tierFilter-WC_RUNNERS" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-300 transition whitespace-nowrap flex items-center gap-1">🥈 WC 2ND PLACE</button>
+            <button onclick="setMarketTierFilter('WC_BEST')" id="tierFilter-WC_BEST" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-sky-400 transition whitespace-nowrap flex items-center gap-1">🌟 WC BEST PLAYERS</button>
+            <button onclick="setMarketTierFilter('UCL_WINNERS')" id="tierFilter-UCL_WINNERS" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-blue-400 transition whitespace-nowrap flex items-center gap-1">🇪🇺 UCL WINNERS</button>
+          </div>
+
+          <select id="marketPosSelect" onchange="renderMarket()" class="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-300 focus:outline-none focus:border-emerald-500">
+            <option value="ALL">All Positions</option>
+            <option value="GK">Goalkeepers (GK)</option>
+            <option value="DEF">Defenders (LB, LCB, RCB, RB)</option>
+            <option value="MID">Midfielders (LCM, CAM, RCM)</option>
+            <option value="FWD">Attackers (LW, ST, RW)</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="marketCardsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+    </section>
+
+    <section id="tab-league" class="hidden space-y-6">
+      <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
+        <div>
+          <div class="flex items-center gap-2">
+            <span id="leagueFlag" class="text-2xl">🏴󠁧󠁢󠁥󠁮󠁧󠁿</span>
+            <h2 id="leagueTitle" class="font-arcade text-xl md:text-2xl font-bold text-white">NATIONAL LEAGUE</h2>
+          </div>
+          <p class="text-slate-400 text-xs md:text-sm mt-1">
+            Finish <strong class="text-emerald-400">1st, 2nd, or 3rd</strong> in the 20-team league to get promoted! Top League finishes qualify for European Cups.
+          </p>
+        </div>
+        <div class="bg-slate-950 px-4 py-2 rounded-xl border border-slate-800 text-right">
+          <div class="text-[10px] text-slate-400 font-bold uppercase">Season Progress</div>
+          <div id="seasonProgressText" class="font-arcade text-sm font-bold text-cyan-400">Match 1 / 19</div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <!-- 20-Team Standings Table -->
+        <div class="lg:col-span-7 bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-2xl">
+          <div class="p-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+            <h3 class="font-fut text-base font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <i class="fa-solid fa-list-ol text-emerald-400"></i> League Standings (20 Clubs)
+            </h3>
+            <div class="flex items-center gap-3 text-[10px] font-semibold text-slate-400">
+              <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Promotion / CL</span>
+              <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-cyan-500"></span> Europa / Conf</span>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs text-slate-300">
+              <thead class="bg-slate-950/60 text-slate-400 text-[10px] uppercase font-bold tracking-wider border-b border-slate-800">
+                <tr>
+                  <th class="py-2.5 px-3">#</th>
+                  <th class="py-2.5 px-3">Club</th>
+                  <th class="py-2.5 px-2 text-center">OVR</th>
+                  <th class="py-2.5 px-2 text-center">P</th>
+                  <th class="py-2.5 px-2 text-center">W</th>
+                  <th class="py-2.5 px-2 text-center">D</th>
+                  <th class="py-2.5 px-2 text-center">L</th>
+                  <th class="py-2.5 px-2 text-center">GD</th>
+                  <th class="py-2.5 px-3 text-right font-extrabold text-white">PTS</th>
+                </tr>
+              </thead>
+              <tbody id="leagueTableBody" class="divide-y divide-slate-800/50"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Next Match Simulation Arena -->
+        <div class="lg:col-span-5 space-y-4">
+          <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-4 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-800/80 pb-2">
+              <span class="text-xs font-bold text-slate-400 uppercase tracking-widest">NEXT FIXTURE</span>
+              <div id="matchTypeBadge" class="text-[9px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-bold uppercase">League Match 1</div>
+            </div>
+
+            <!-- VS Visual Banner -->
+            <div class="flex items-center justify-between gap-2 py-2">
+              <!-- Home Club (User) -->
+              <div class="flex-1 text-center space-y-1">
+                <div id="simUserBadgeContainer" class="w-12 h-12 mx-auto rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center font-black text-xl shadow-md">
+                  <i id="simUserBadgeIcon" class="fa-solid fa-shield"></i>
+                </div>
+                <div id="simUserClubName" class="font-fut font-bold text-sm text-white truncate max-w-[110px] mx-auto">
+                  Apex FC
+                </div>
+                <div id="simUserClubOvr" class="text-[10px] font-bold text-emerald-400">
+                  OVR: 64
+                </div>
+              </div>
+
+              <!-- Scoreboard Center -->
+              <div class="text-center px-2 space-y-1">
+                <div class="font-arcade text-2xl font-black text-white flex items-center gap-2">
+                  <span id="simScoreUser">0</span>
+                  <span class="text-slate-600">-</span>
+                  <span id="simScoreOpp">0</span>
+                </div>
+                <div id="simTimeDisplay" class="font-mono text-xs font-bold text-amber-400">00'</div>
+              </div>
+
+              <!-- Away Club (Opponent) -->
+              <div class="flex-1 text-center space-y-1">
+                <div id="simOpponentBadgeContainer" class="w-12 h-12 mx-auto rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center justify-center font-black text-xl shadow-md">
+                  <i id="simOpponentBadgeIcon" class="fa-solid fa-shield-halved"></i>
+                </div>
+                <div id="simOpponentName" class="font-fut font-bold text-sm text-white truncate max-w-[110px] mx-auto">
+                  Opponent FC
+                </div>
+                <div id="simOpponentOvr" class="text-[10px] font-bold text-rose-400">
+                  OVR: 63
+                </div>
+              </div>
+            </div>
+
+            <!-- Speed / Duration Control -->
+            <div class="flex items-center justify-between bg-slate-950 p-2 rounded-xl border border-slate-800 text-xs">
+              <span class="text-slate-400 font-bold text-[10px] uppercase">Match Duration:</span>
+              <div class="flex items-center gap-1">
+                <button type="button" onclick="setSimDuration(15)" id="speedBtn-fast" class="px-2.5 py-1 rounded bg-emerald-500 text-slate-950 font-bold text-[10px] uppercase">Fast (15s)</button>
+                <button type="button" onclick="setSimDuration(300)" id="speedBtn-5min" class="px-2.5 py-1 rounded bg-slate-800 text-slate-400 hover:text-white font-bold text-[10px] uppercase">Extended (5 Min)</button>
+              </div>
+            </div>
+
+            <!-- 2D Pitch Radar Simulation -->
+            <div class="soccer-pitch h-36 rounded-xl relative border border-slate-800 overflow-hidden shadow-inner flex items-center justify-center">
+              <div class="absolute inset-2 pitch-line rounded pointer-events-none"></div>
+              <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full pitch-circle pointer-events-none"></div>
+              
+              <!-- Ball Radar Dot -->
+              <div id="simBallDot" class="w-3.5 h-3.5 rounded-full bg-white border-2 border-emerald-400 shadow-lg absolute transform -translate-x-1/2 -translate-y-1/2" style="left: 50%; top: 50%; transition: left 0.25s cubic-bezier(0.25, 1, 0.5, 1), top 0.25s cubic-bezier(0.25, 1, 0.5, 1);"></div>
+            </div>
+
+            <!-- Commentary Log -->
+            <div id="simCommentaryFeed" class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs font-mono text-emerald-400 h-14 overflow-y-auto flex items-center">
+              Ready for kick-off. Tap Start Match to play!
+            </div>
+
+            <button id="startSimBtn" onclick="toggleMatchSimulation()" class="w-full py-3.5 bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-arcade font-extrabold text-sm rounded-xl shadow-lg transition active:scale-95 flex items-center justify-center gap-2">
+              <i class="fa-solid fa-play"></i>
+              <span>START MATCH</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MATCH RESULT MODAL -->
+  <div id="matchResultModal" class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 text-center space-y-5 shadow-2xl relative">
+      <div id="modalResultTitle" class="font-arcade text-3xl font-black text-emerald-400">VICTORY!</div>
+      <p id="modalResultSubtitle" class="text-xs text-slate-300">Great tactical performance!</p>
+
+      <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-1">
+        <div class="text-xs font-bold text-slate-400 uppercase">Final Score</div>
+        <div id="modalScoreText" class="font-arcade text-3xl font-bold text-white">2 - 1</div>
+      </div>
+
+      <div class="flex items-center justify-between bg-emerald-500/10 p-3 rounded-xl border border-emerald-500/30">
+        <span class="text-xs font-bold text-slate-300">Match Earnings:</span>
+        <span id="modalRewardText" class="font-arcade text-lg font-bold text-emerald-400">+$1,500</span>
+      </div>
+
+      <button onclick="closeMatchResultModal()" class="w-full py-3 bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 font-arcade font-extrabold text-xs rounded-xl shadow-lg transition active:scale-95">
+        CONTINUE CAREER
+      </button>
+    </div>
+  </div>
+
+  <!-- SLOT SELECTOR MODAL -->
+  <div id="slotSelectorModal" class="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl relative">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 id="slotModalTitle" class="font-arcade text-sm font-bold text-white uppercase">ASSIGN PLAYER TO ST</h3>
+        <button onclick="closeSlotSelectorModal()" class="text-slate-400 hover:text-white font-bold text-sm">✕</button>
+      </div>
+      <div id="slotModalPlayersList" class="space-y-2 max-h-80 overflow-y-auto pr-1"></div>
+    </div>
+  </div>
+
+  <!-- PACK OPENING SHOWCASE MODAL -->
+  <div id="packOpeningModal" class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-amber-500/40 rounded-2xl max-w-2xl w-full p-6 text-center space-y-6 shadow-2xl relative">
+      <div id="packOpeningStage" class="py-12 space-y-4">
+        <div class="w-20 h-20 mx-auto rounded-3xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center text-4xl animate-bounce">
+          🎁
+        </div>
+        <h3 class="font-arcade text-xl font-bold text-white">OPENING CARD PACK...</h3>
+      </div>
+
+      <div id="packResultsStage" class="hidden space-y-5">
+        <div class="font-arcade text-lg font-bold text-amber-400">YOU UNLOCKED 7 CARDS!</div>
+        <div id="packRevealedCardsGrid" class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5"></div>
+        <button onclick="closePackOpeningModal()" class="px-8 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-arcade font-extrabold text-xs rounded-xl shadow-lg transition">
+          CLAIM CARDS & CONTINUE
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CLUB CUSTOMIZATION MODAL -->
+  <div id="clubCustomizerModal" class="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="font-arcade text-base font-bold text-white uppercase flex items-center gap-2">
+          <i class="fa-solid fa-paint-roller text-emerald-400"></i> CUSTOMIZE CLUB IDENTITY
+        </h3>
+        <button onclick="closeClubCustomizer()" class="text-slate-400 hover:text-white font-bold text-sm">✕</button>
+      </div>
+
+      <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-around gap-4 shadow-inner">
+        <div class="text-center space-y-1">
+          <div class="text-[10px] text-slate-400 font-bold uppercase">Club Crest</div>
+          <div id="customPreviewBadge" class="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-tr from-emerald-500 to-cyan-500 flex items-center justify-center text-slate-950 font-black text-2xl shadow-lg">
+            <i id="customPreviewBadgeIcon" class="fa-solid fa-trophy"></i>
+          </div>
+        </div>
+
+        <div class="text-center space-y-1">
+          <div class="text-[10px] text-slate-400 font-bold uppercase">Home Kit</div>
+          <div id="customPreviewJersey" class="w-16 h-16 mx-auto rounded-xl flex items-center justify-center border border-white/20 relative overflow-hidden shadow-lg" style="background: #10b981;">
+            <div id="customPreviewKitOverlay" class="absolute inset-0 pointer-events-none"></div>
+            <i class="fa-solid fa-shirt text-2xl text-white/90 drop-shadow"></i>
+          </div>
+        </div>
+
+        <div class="text-center space-y-1">
+          <div class="text-[10px] text-slate-400 font-bold uppercase">Home Stadium</div>
+          <div class="text-xs font-bold text-emerald-400 flex items-center justify-center gap-1 mt-2">
+            <i class="fa-solid fa-stadium text-amber-400"></i>
+            <span id="customPreviewStadium" class="truncate max-w-[100px]">Apex Arena</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-4 text-xs">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-slate-300 uppercase mb-1">Club Name</label>
+            <input type="text" id="custClubNameInput" oninput="updateCustomizerPreview()" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-fut text-sm focus:outline-none focus:border-emerald-500 transition" />
+          </div>
+          <div>
+            <label class="block font-bold text-slate-300 uppercase mb-1">Stadium Name</label>
+            <input type="text" id="custStadiumInput" oninput="updateCustomizerPreview()" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-fut text-sm focus:outline-none focus:border-emerald-500 transition" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-300 uppercase mb-1">Manager Name</label>
+          <input type="text" id="custManagerInput" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-fut text-sm focus:outline-none focus:border-emerald-500 transition" />
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-300 uppercase mb-2">Select Crest Icon</label>
+          <div class="grid grid-cols-6 gap-2" id="badgeIconGrid"></div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-slate-300 uppercase mb-1">Primary Color</label>
+            <input type="color" id="custPrimaryColor" onchange="updateCustomizerPreview()" value="#10b981" class="w-full h-10 bg-slate-950 border border-slate-800 rounded-xl p-1 cursor-pointer" />
+          </div>
+          <div>
+            <label class="block font-bold text-slate-300 uppercase mb-1">Secondary Color</label>
+            <input type="color" id="custSecondaryColor" onchange="updateCustomizerPreview()" value="#06b6d4" class="w-full h-10 bg-slate-950 border border-slate-800 rounded-xl p-1 cursor-pointer" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-300 uppercase mb-1">Kit Design Pattern</label>
+          <div class="grid grid-cols-4 gap-2 text-center" id="kitPatternGrid">
+            <button type="button" onclick="selectKitPattern('solid')" id="kitPat-solid" class="py-2 bg-slate-950 border border-emerald-500 rounded-xl font-bold text-emerald-400">Solid</button>
+            <button type="button" onclick="selectKitPattern('stripes')" id="kitPat-stripes" class="py-2 bg-slate-950 border border-slate-800 rounded-xl font-bold text-slate-400">Stripes</button>
+            <button type="button" onclick="selectKitPattern('hoops')" id="kitPat-hoops" class="py-2 bg-slate-950 border border-slate-800 rounded-xl font-bold text-slate-400">Hoops</button>
+            <button type="button" onclick="selectKitPattern('sash')" id="kitPat-sash" class="py-2 bg-slate-950 border border-slate-800 rounded-xl font-bold text-slate-400">Sash</button>
+          </div>
+        </div>
+
+        <button onclick="saveClubCustomization()" class="w-full py-3 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-arcade font-extrabold text-xs rounded-xl shadow-lg transition active:scale-95">
+          APPLY & SAVE CUSTOMIZATION
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MANAGER OF THE YEAR MODAL -->
+  <div id="managerAwardModal" class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-emerald-500/50 rounded-2xl max-w-lg w-full p-6 text-center space-y-6 shadow-2xl relative">
+      <div class="w-20 h-20 mx-auto rounded-3xl bg-gradient-to-tr from-emerald-400 to-cyan-400 text-slate-950 flex items-center justify-center text-4xl shadow-2xl">
+        👑
+      </div>
+      <div class="space-y-2">
+        <h2 id="managerAwardTitle" class="font-arcade text-2xl font-black text-white">MANAGER OF THE YEAR!</h2>
+        <p id="managerAwardSubtitle" class="text-xs text-slate-300">
+          Unbelievable season performance!
+        </p>
+      </div>
+
+      <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-left">
+        <div class="text-xs font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+          <span>🌎 2026 WORLD CUP NATIONAL JOB OFFER</span>
+        </div>
+        <p class="text-xs text-slate-300">
+          Your home national team (<strong id="nationalTeamOfferName">England</strong>) has officially invited you to manage them in the 2026 World Cup & Nations League!
+        </p>
+      </div>
+
+      <button onclick="acceptNationalJobOffer()" class="w-full py-3.5 bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 font-arcade font-extrabold text-sm rounded-xl shadow-lg transition active:scale-95">
+        ACCEPT NATIONAL JOB & CONTINUE
+      </button>
+    </div>
+  </div>
+
+  <!-- SAVE PROGRESS & IMPORT CODE MODAL -->
+  <div id="saveLoadModal" class="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl relative">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="font-arcade text-base font-bold text-white uppercase flex items-center gap-2">
+          <i class="fa-solid fa-floppy-disk text-amber-400"></i> CAREER PROGRESS MANAGER
+        </h3>
+        <button onclick="closeSaveLoadModal()" class="text-slate-400 hover:text-white font-bold text-sm">✕</button>
+      </div>
+
+      <div class="space-y-4 text-xs">
+        <div class="grid grid-cols-2 gap-3">
+          <button onclick="saveGameProgress(true)" class="py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl shadow transition flex items-center justify-center gap-2">
+            <i class="fa-solid fa-download"></i> Save Progress
+          </button>
+          <button onclick="exportSaveCode()" class="py-3 bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 font-bold rounded-xl transition flex items-center justify-center gap-2">
+            <i class="fa-solid fa-copy"></i> Copy Save Code
+          </button>
+        </div>
+
+        <div class="border-t border-slate-800 pt-3 space-y-2">
+          <label class="block font-bold text-slate-300 uppercase">Import Save Code</label>
+          <textarea id="importCodeInput" rows="3" placeholder="Paste your saved career code string here..." class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-200 font-mono text-[11px] focus:outline-none focus:border-emerald-500 transition"></textarea>
+          <button onclick="importSaveCode()" class="w-full py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-arcade font-extrabold rounded-xl transition shadow">
+            RESTORE CAREER FROM CODE
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div id="toastNotification" class="fixed bottom-5 right-5 z-50 bg-slate-900 border border-emerald-500/50 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+    <div id="toastIcon" class="text-emerald-400 text-lg">💾</div>
+    <div id="toastMessage" class="text-xs font-bold">Progress Saved</div>
+  </div>
+
+  <script>
+    /* DATA STRUCTURES & DATABASE */
+    const NATIONS_DATA = {
+      England: {
+        flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+        leagues: [
+          { name: 'National League (Div 4)', avgRating: 63 },
+          { name: 'EFL League One (Div 3)', avgRating: 71 },
+          { name: 'EFL Championship (Div 2)', avgRating: 79 },
+          { name: 'Premier League (Div 1)', avgRating: 86 }
+        ]
+      },
+      Spain: {
+        flag: '🇪🇸',
+        leagues: [
+          { name: 'Primera RFEF (Div 4)', avgRating: 63 },
+          { name: 'Segunda División (Div 3)', avgRating: 71 },
+          { name: 'La Liga 2 (Div 2)', avgRating: 79 },
+          { name: 'La Liga EA Sports (Div 1)', avgRating: 86 }
+        ]
+      },
+      Italy: {
+        flag: '🇮🇹',
+        leagues: [
+          { name: 'Serie C (Div 4)', avgRating: 63 },
+          { name: 'Serie B (Div 3)', avgRating: 71 },
+          { name: 'Serie A2 (Div 2)', avgRating: 79 },
+          { name: 'Serie A (Div 1)', avgRating: 86 }
+        ]
+      },
+      Germany: {
+        flag: '🇩🇪',
+        leagues: [
+          { name: 'Regionalliga (Div 4)', avgRating: 63 },
+          { name: '3. Liga (Div 3)', avgRating: 71 },
+          { name: '2. Bundesliga (Div 2)', avgRating: 79 },
+          { name: 'Bundesliga (Div 1)', avgRating: 86 }
+        ]
+      },
+      France: {
+        flag: '🇫🇷',
+        leagues: [
+          { name: 'National 2 (Div 4)', avgRating: 63 },
+          { name: 'National 1 (Div 3)', avgRating: 71 },
+          { name: 'Ligue 2 (Div 2)', avgRating: 79 },
+          { name: 'Ligue 1 (Div 1)', avgRating: 86 }
+        ]
+      }
+    };
+
+    const STARTER_PLAYERS = [
+      { id: 'st_1', name: 'J. Smith', pos: 'LW', ovr: 64, tier: 'BRONZE', price: 100, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'st_2', name: 'M. Taylor', pos: 'ST', ovr: 64, tier: 'BRONZE', price: 100, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'st_3', name: 'D. Jones', pos: 'RW', ovr: 64, tier: 'BRONZE', price: 100, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'st_4', name: 'L. Davies', pos: 'LCM', ovr: 64, tier: 'BRONZE', price: 100, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'st_5', name: 'O. Evans', pos: 'CAM', ovr: 64, tier: 'BRONZE', price: 100, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'st_6', name: 'H. Wilson', pos: 'RCM', ovr: 64, tier: 'BRONZE', price: 100, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'st_7', name: 'C. Thomas', pos: 'LB', ovr: 64, tier: 'BRONZE', price: 100, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'st_8', name: 'B. Roberts', pos: 'LCB', ovr: 64, tier: 'BRONZE', price: 100, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'st_9', name: 'G. Johnson', pos: 'RCB', ovr: 64, tier: 'BRONZE', price: 100, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'st_10', name: 'A. Walker', pos: 'RB', ovr: 64, tier: 'BRONZE', price: 100, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'st_11', name: 'K. Wright', pos: 'GK', ovr: 64, tier: 'BRONZE', price: 100, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' }
+    ];
+
+    const MARKET_PLAYERS_DATABASE = [
+      // BRONZE TIER
+      { id: 'br_1', name: 'E. Palmer', pos: 'ST', ovr: 68, tier: 'BRONZE', price: 350, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'br_2', name: 'C. Mainoo', pos: 'LCM', ovr: 70, tier: 'BRONZE', price: 450, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'br_3', name: 'G. Quansah', pos: 'LCB', ovr: 69, tier: 'BRONZE', price: 400, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'br_4', name: 'A. Wharton', pos: 'RCM', ovr: 70, tier: 'BRONZE', price: 480, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'br_5', name: 'J. Trafford', pos: 'GK', ovr: 68, tier: 'BRONZE', price: 320, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'br_6', name: 'M. Tel', pos: 'LW', ovr: 70, tier: 'BRONZE', price: 500, nation: '🇫🇷' },
+
+      // SILVER TIER
+      { id: 'sl_1', name: 'Richarlison', pos: 'ST', ovr: 80, tier: 'SILVER', price: 1200, nation: '🇧🇷' },
+      { id: 'sl_2', name: 'A. Gordon', pos: 'LW', ovr: 81, tier: 'SILVER', price: 1400, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'sl_3', name: 'M. Cucurella', pos: 'LB', ovr: 79, tier: 'SILVER', price: 1100, nation: '🇪🇸' },
+      { id: 'sl_4', name: 'M. Rashford', pos: 'LW', ovr: 81, tier: 'SILVER', price: 1500, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'sl_5', name: 'J. Pickford', pos: 'GK', ovr: 81, tier: 'SILVER', price: 1300, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'sl_6', name: 'Lisandro Martínez', pos: 'LCB', ovr: 81, tier: 'SILVER', price: 1450, nation: '🇦🇷' },
+      { id: 'sl_7', name: 'K. Walker', pos: 'RB', ovr: 81, tier: 'SILVER', price: 1400, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+
+      // GOLD TIER
+      { id: 'gd_1', name: 'K. De Bruyne', pos: 'CAM', ovr: 91, tier: 'GOLD', price: 4500, nation: '🇧🇪' },
+      { id: 'gd_2', name: 'E. Haaland', pos: 'ST', ovr: 91, tier: 'GOLD', price: 5000, nation: '🇳🇴' },
+      { id: 'gd_3', name: 'K. Mbappé', pos: 'ST', ovr: 91, tier: 'GOLD', price: 5200, nation: '🇫🇷' },
+      { id: 'gd_4', name: 'Vini Jr.', pos: 'LW', ovr: 90, tier: 'GOLD', price: 4200, nation: '🇧🇷' },
+      { id: 'gd_5', name: 'J. Bellingham', pos: 'CAM', ovr: 90, tier: 'GOLD', price: 4400, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'gd_6', name: 'Virgil van Dijk', pos: 'RCB', ovr: 89, tier: 'GOLD', price: 3800, nation: '🇳🇱' },
+      { id: 'gd_7', name: 'Thibaut Courtois', pos: 'GK', ovr: 90, tier: 'GOLD', price: 3900, nation: '🇧🇪' },
+      { id: 'gd_8', name: 'Mohamed Salah', pos: 'RW', ovr: 89, tier: 'GOLD', price: 3700, nation: '🇪🇬' },
+
+      // PRIME ICONS TIER
+      { id: 'pr_1', name: 'Lionel Messi (Prime)', pos: 'RW', ovr: 99, tier: 'PRIME', price: 250000, nation: '🇦🇷' },
+      { id: 'pr_2', name: 'Cristiano Ronaldo (Prime)', pos: 'ST', ovr: 99, tier: 'PRIME', price: 240000, nation: '🇵🇹' },
+      { id: 'pr_3', name: 'Pelé (Prime)', pos: 'CAM', ovr: 98, tier: 'PRIME', price: 220000, nation: '🇧🇷' },
+      { id: 'pr_4', name: 'Neymar Jr (Prime)', pos: 'LW', ovr: 98, tier: 'PRIME', price: 210000, nation: '🇧🇷' },
+      { id: 'pr_5', name: 'Zinedine Zidane', pos: 'CAM', ovr: 97, tier: 'PRIME', price: 185000, nation: '🇫🇷' },
+      { id: 'pr_6', name: 'Johan Cruyff', pos: 'ST', ovr: 96, tier: 'PRIME', price: 170000, nation: '🇳🇱' },
+      { id: 'pr_7', name: 'Paolo Maldini', pos: 'LCB', ovr: 96, tier: 'PRIME', price: 160000, nation: '🇮🇹' },
+      { id: 'pr_8', name: 'Lev Yashin', pos: 'GK', ovr: 95, tier: 'PRIME', price: 150000, nation: '🇷🇺' },
+
+      // 🏆 2026 WORLD CUP WINNERS
+      { id: 'wcw_1', name: 'Lamine Yamal (WC Winner)', pos: 'RW', ovr: 97, tier: 'WC_WINNERS', price: 220000, nation: '🇪🇸' },
+      { id: 'wcw_2', name: 'Rodri (WC Winner)', pos: 'LCM', ovr: 96, tier: 'WC_WINNERS', price: 195000, nation: '🇪🇸' },
+      { id: 'wcw_3', name: 'Nico Williams (WC Winner)', pos: 'LW', ovr: 95, tier: 'WC_WINNERS', price: 180000, nation: '🇪🇸' },
+      { id: 'wcw_4', name: 'Dani Olmo (WC Winner)', pos: 'CAM', ovr: 94, tier: 'WC_WINNERS', price: 165000, nation: '🇪🇸' },
+      { id: 'wcw_5', name: 'Unai Simón (WC Winner)', pos: 'GK', ovr: 94, tier: 'WC_WINNERS', price: 160000, nation: '🇪🇸' },
+      { id: 'wcw_6', name: 'Marc Cucurella (WC Winner)', pos: 'LB', ovr: 94, tier: 'WC_WINNERS', price: 155000, nation: '🇪🇸' },
+      { id: 'wcw_7', name: 'Pedri (WC Winner)', pos: 'CAM', ovr: 96, tier: 'WC_WINNERS', price: 190000, nation: '🇪🇸' },
+      { id: 'wcw_8', name: 'Fabián Ruiz (WC Winner)', pos: 'LCM', ovr: 95, tier: 'WC_WINNERS', price: 175000, nation: '🇪🇸' },
+      { id: 'wcw_9', name: 'Aymeric Laporte (WC Winner)', pos: 'LCB', ovr: 94, tier: 'WC_WINNERS', price: 155000, nation: '🇪🇸' },
+      { id: 'wcw_10', name: 'Dani Carvajal (WC Winner)', pos: 'RB', ovr: 95, tier: 'WC_WINNERS', price: 170000, nation: '🇪🇸' },
+      { id: 'wcw_11', name: 'Mikel Oyarzabal (WC Winner)', pos: 'ST', ovr: 94, tier: 'WC_WINNERS', price: 160000, nation: '🇪🇸' },
+      { id: 'wcw_12', name: 'M. Zubimendi (WC Winner)', pos: 'RCM', ovr: 94, tier: 'WC_WINNERS', price: 160000, nation: '🇪🇸' },
+
+      // 🇪🇺 2026 UEFA CHAMPIONS LEAGUE WINNERS
+      { id: 'ucl_1', name: 'Ousmane Dembélé (UCL Champ)', pos: 'RW', ovr: 97, tier: 'UCL_WINNERS', price: 195000, nation: '🇫🇷' },
+      { id: 'ucl_2', name: 'Vitinha (UCL Champ)', pos: 'LCM', ovr: 96, tier: 'UCL_WINNERS', price: 185000, nation: '🇵🇹' },
+      { id: 'ucl_3', name: 'Achraf Hakimi (UCL Champ)', pos: 'RB', ovr: 96, tier: 'UCL_WINNERS', price: 180000, nation: '🇲🇦' },
+      { id: 'ucl_4', name: 'Bradley Barcola (UCL Champ)', pos: 'LW', ovr: 95, tier: 'UCL_WINNERS', price: 170000, nation: '🇫🇷' },
+      { id: 'ucl_5', name: 'G. Donnarumma (UCL Champ)', pos: 'GK', ovr: 96, tier: 'UCL_WINNERS', price: 175000, nation: '🇮🇹' },
+      { id: 'ucl_6', name: 'Vinícius Jr. (UCL Champ)', pos: 'LW', ovr: 98, tier: 'UCL_WINNERS', price: 210000, nation: '🇧🇷' },
+      { id: 'ucl_7', name: 'Marquinhos (UCL Champ)', pos: 'RCB', ovr: 96, tier: 'UCL_WINNERS', price: 180000, nation: '🇧🇷' },
+      { id: 'ucl_8', name: 'W. Zaïre-Emery (UCL Champ)', pos: 'RCM', ovr: 95, tier: 'UCL_WINNERS', price: 170000, nation: '🇫🇷' },
+      { id: 'ucl_9', name: 'Nuno Mendes (UCL Champ)', pos: 'LB', ovr: 95, tier: 'UCL_WINNERS', price: 165000, nation: '🇵🇹' },
+      { id: 'ucl_10', name: 'João Neves (UCL Champ)', pos: 'LCM', ovr: 95, tier: 'UCL_WINNERS', price: 165000, nation: '🇵🇹' },
+      { id: 'ucl_11', name: 'Kylian Mbappé (UCL Champ)', pos: 'ST', ovr: 98, tier: 'UCL_WINNERS', price: 220000, nation: '🇫🇷' },
+      { id: 'ucl_12', name: 'Jude Bellingham (UCL Champ)', pos: 'CAM', ovr: 97, tier: 'UCL_WINNERS', price: 200000, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'ucl_13', name: 'F. Valverde (UCL Champ)', pos: 'RCM', ovr: 96, tier: 'UCL_WINNERS', price: 185000, nation: '🇺🇾' },
+      { id: 'ucl_14', name: 'Thibaut Courtois (UCL Champ)', pos: 'GK', ovr: 96, tier: 'UCL_WINNERS', price: 180000, nation: '🇧🇪' },
+
+      // 🥇 BALLON D'OR WINNERS
+      { id: 'bdo_1', name: 'Erling Haaland (Ballon d\'Or)', pos: 'ST', ovr: 98, tier: 'BALLON_DOR', price: 240000, nation: '🇳🇴' },
+      { id: 'bdo_2', name: 'Lionel Messi (8x Ballon d\'Or)', pos: 'RW', ovr: 99, tier: 'BALLON_DOR', price: 270000, nation: '🇦🇷' },
+      { id: 'bdo_3', name: 'C. Ronaldo (5x Ballon d\'Or)', pos: 'ST', ovr: 99, tier: 'BALLON_DOR', price: 265000, nation: '🇵🇹' },
+      { id: 'bdo_4', name: 'Karim Benzema (Ballon d\'Or)', pos: 'ST', ovr: 97, tier: 'BALLON_DOR', price: 200000, nation: '🇫🇷' },
+      { id: 'bdo_5', name: 'Luka Modrić (Ballon d\'Or)', pos: 'CAM', ovr: 97, tier: 'BALLON_DOR', price: 195000, nation: '🇭🇷' },
+      { id: 'bdo_6', name: 'Ronaldinho (Ballon d\'Or)', pos: 'LW', ovr: 98, tier: 'BALLON_DOR', price: 230000, nation: '🇧🇷' },
+      { id: 'bdo_7', name: 'Ronaldo Nazário (Ballon d\'Or)', pos: 'ST', ovr: 99, tier: 'BALLON_DOR', price: 260000, nation: '🇧🇷' },
+      { id: 'bdo_8', name: 'Kaká (Ballon d\'Or)', pos: 'CAM', ovr: 97, tier: 'BALLON_DOR', price: 190000, nation: '🇧🇷' },
+      { id: 'bdo_9', name: 'Zinedine Zidane (Ballon d\'Or)', pos: 'CAM', ovr: 98, tier: 'BALLON_DOR', price: 225000, nation: '🇫🇷' },
+      { id: 'bdo_10', name: 'Fabio Cannavaro (Ballon d\'Or)', pos: 'LCB', ovr: 96, tier: 'BALLON_DOR', price: 180000, nation: '🇮🇹' },
+
+      // 👑 PLAYER OF THE YEAR
+      { id: 'poty_1', name: 'Vinícius Jr. (Player of the Year)', pos: 'LW', ovr: 98, tier: 'PLAYER_OF_YEAR', price: 220000, nation: '🇧🇷' },
+      { id: 'poty_2', name: 'Rodri (Player of the Year)', pos: 'LCM', ovr: 97, tier: 'PLAYER_OF_YEAR', price: 210000, nation: '🇪🇸' },
+      { id: 'poty_3', name: 'Erling Haaland (Player of the Year)', pos: 'ST', ovr: 98, tier: 'PLAYER_OF_YEAR', price: 230000, nation: '🇳🇴' },
+      { id: 'poty_4', name: 'Kylian Mbappé (Player of the Year)', pos: 'ST', ovr: 98, tier: 'PLAYER_OF_YEAR', price: 225000, nation: '🇫🇷' },
+      { id: 'poty_5', name: 'Jude Bellingham (POTY)', pos: 'CAM', ovr: 97, tier: 'PLAYER_OF_YEAR', price: 205000, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'poty_6', name: 'Mohamed Salah (POTY)', pos: 'RW', ovr: 96, tier: 'PLAYER_OF_YEAR', price: 190000, nation: '🇪🇬' },
+      { id: 'poty_7', name: 'Harry Kane (POTY)', pos: 'ST', ovr: 96, tier: 'PLAYER_OF_YEAR', price: 185000, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'poty_8', name: 'Cole Palmer (POTY)', pos: 'CAM', ovr: 96, tier: 'PLAYER_OF_YEAR', price: 185000, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'poty_9', name: 'Bukayo Saka (POTY)', pos: 'RW', ovr: 96, tier: 'PLAYER_OF_YEAR', price: 180000, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'poty_10', name: 'Lautaro Martínez (POTY)', pos: 'ST', ovr: 95, tier: 'PLAYER_OF_YEAR', price: 175000, nation: '🇦🇷' },
+      { id: 'poty_11', name: 'Virgil van Dijk (POTY)', pos: 'RCB', ovr: 96, tier: 'PLAYER_OF_YEAR', price: 180000, nation: '🇳🇱' },
+
+      // 🥈 2026 WORLD CUP 2ND PLACE
+      { id: 'wcr_1', name: 'Lionel Messi (WC Runner)', pos: 'RW', ovr: 96, tier: 'WC_RUNNERS', price: 140000, nation: '🇦🇷' },
+      { id: 'wcr_2', name: 'Jude Bellingham (WC Runner)', pos: 'CAM', ovr: 95, tier: 'WC_RUNNERS', price: 130000, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'wcr_3', name: 'Harry Kane (WC Runner)', pos: 'ST', ovr: 95, tier: 'WC_RUNNERS', price: 125000, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'wcr_4', name: 'Bukayo Saka (WC Runner)', pos: 'RW', ovr: 95, tier: 'WC_RUNNERS', price: 125000, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'wcr_5', name: 'Cole Palmer (WC Runner)', pos: 'CAM', ovr: 95, tier: 'WC_RUNNERS', price: 125000, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'wcr_6', name: 'Declan Rice (WC Runner)', pos: 'LCM', ovr: 95, tier: 'WC_RUNNERS', price: 120000, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'wcr_7', name: 'Lautaro Martínez (WC Runner)', pos: 'ST', ovr: 95, tier: 'WC_RUNNERS', price: 125000, nation: '🇦🇷' },
+      { id: 'wcr_8', name: 'Julián Álvarez (WC Runner)', pos: 'ST', ovr: 94, tier: 'WC_RUNNERS', price: 115000, nation: '🇦🇷' },
+      { id: 'wcr_9', name: 'Enzo Fernández (WC Runner)', pos: 'RCM', ovr: 94, tier: 'WC_RUNNERS', price: 115000, nation: '🇦🇷' },
+      { id: 'wcr_10', name: 'Alexis Mac Allister (WC Runner)', pos: 'LCM', ovr: 94, tier: 'WC_RUNNERS', price: 115000, nation: '🇦🇷' },
+      { id: 'wcr_11', name: 'Emi Martínez (WC Runner)', pos: 'GK', ovr: 95, tier: 'WC_RUNNERS', price: 120000, nation: '🇦🇷' },
+
+      // 🌟 2026 WORLD CUP BEST PLAYERS
+      { id: 'wcb_1', name: 'K. Mbappé (WC Golden Boot)', pos: 'ST', ovr: 98, tier: 'WC_BEST', price: 190000, nation: '🇫🇷' },
+      { id: 'wcb_2', name: 'Vinícius Jr. (WC Golden Ball)', pos: 'LW', ovr: 97, tier: 'WC_BEST', price: 180000, nation: '🇧🇷' },
+      { id: 'wcb_3', name: 'Michael Olise (WC Star)', pos: 'RW', ovr: 96, tier: 'WC_BEST', price: 165000, nation: '🇫🇷' },
+      { id: 'wcb_4', name: 'Cody Gakpo (WC Star)', pos: 'LW', ovr: 96, tier: 'WC_BEST', price: 160000, nation: '🇳🇱' },
+      { id: 'wcb_5', name: 'Xavi Simons (WC Star)', pos: 'CAM', ovr: 95, tier: 'WC_BEST', price: 150000, nation: '🇳🇱' },
+      { id: 'wcb_6', name: 'Jamal Musiala (WC Star)', pos: 'CAM', ovr: 96, tier: 'WC_BEST', price: 165000, nation: '🇩🇪' },
+      { id: 'wcb_7', name: 'Florian Wirtz (WC Star)', pos: 'CAM', ovr: 96, tier: 'WC_BEST', price: 165000, nation: '🇩🇪' },
+      { id: 'wcb_8', name: 'F. Valverde (WC Star)', pos: 'RCM', ovr: 96, tier: 'WC_BEST', price: 160000, nation: '🇺🇾' },
+      { id: 'wcb_9', name: 'Alphonso Davies (WC Star)', pos: 'LB', ovr: 95, tier: 'WC_BEST', price: 150000, nation: '🇨🇦' },
+      { id: 'wcb_10', name: 'Rafael Leão (WC Star)', pos: 'LW', ovr: 95, tier: 'WC_BEST', price: 155000, nation: '🇵🇹' },
+      { id: 'wcb_11', name: 'Mike Maignan (WC Glove)', pos: 'GK', ovr: 95, tier: 'WC_BEST', price: 150000, nation: '🇫🇷' },
+      { id: 'wcb_12', name: 'Joško Gvardiol (WC Star)', pos: 'LCB', ovr: 95, tier: 'WC_BEST', price: 150000, nation: '🇭🇷' }
+    ];
+
+    const WC_PACK_POOL = [
+      { id: 'wcp_1', name: 'Lamine Yamal', pos: 'RW', ovr: 97, tier: 'WC_WINNERS', price: 220000, nation: '🇪🇸' },
+      { id: 'wcp_2', name: 'K. Mbappé', pos: 'ST', ovr: 97, tier: 'WC_BEST', price: 190000, nation: '🇫🇷' },
+      { id: 'wcp_3', name: 'Rodri', pos: 'LCM', ovr: 96, tier: 'WC_WINNERS', price: 195000, nation: '🇪🇸' },
+      { id: 'wcp_4', name: 'Vinícius Jr.', pos: 'LW', ovr: 96, tier: 'WC_BEST', price: 180000, nation: '🇧🇷' },
+      { id: 'wcp_5', name: 'Jude Bellingham', pos: 'CAM', ovr: 95, tier: 'WC_RUNNERS', price: 130000, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+      { id: 'wcp_6', name: 'Lionel Messi', pos: 'RW', ovr: 95, tier: 'WC_RUNNERS', price: 140000, nation: '🇦🇷' },
+      { id: 'wcp_7', name: 'Harry Kane', pos: 'ST', ovr: 94, tier: 'WC_RUNNERS', price: 125000, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' }
+    ];
+
+    const ICON_PACK_POOL = [
+      { id: 'icp_1', name: 'Lionel Messi (Prime)', pos: 'RW', ovr: 98, tier: 'PRIME', price: 250000, nation: '🇦🇷' },
+      { id: 'icp_2', name: 'C. Ronaldo (Prime)', pos: 'ST', ovr: 98, tier: 'PRIME', price: 240000, nation: '🇵🇹' },
+      { id: 'icp_3', name: 'Pelé (Prime)', pos: 'CAM', ovr: 98, tier: 'PRIME', price: 220000, nation: '🇧🇷' },
+      { id: 'icp_4', name: 'Zinedine Zidane', pos: 'CAM', ovr: 96, tier: 'PRIME', price: 185000, nation: '🇫🇷' }
+    ];
+
+    const BADGE_ICONS = [
+      'fa-trophy', 'fa-shield', 'fa-shield-halved', 'fa-crown', 
+      'fa-dragon', 'fa-bolt', 'fa-fire', 'fa-star', 
+      'fa-meteor', 'fa-gem', 'fa-cat', 'fa-feather-pointed'
+    ];
+
+    /* APP STATE */
+    let gameState = {
+      clubName: 'Apex Football Club',
+      stadiumName: 'Apex Arena',
+      managerName: 'Manager',
+      badgeIcon: 'fa-trophy',
+      primaryColor: '#10b981',
+      secondaryColor: '#06b6d4',
+      kitPattern: 'solid',
+      country: 'England',
+      currentLeagueIndex: 0,
+      budget: 1000,
+      squad: {
+        LW: null, ST: null, RW: null,
+        LCM: null, CAM: null, RCM: null,
+        LB: null, LCB: null, RCB: null, RB: null,
+        GK: null
+      },
+      marketOwned: [],
+      leagueTable: [],
+      seasonMatchCount: 1,
+      selectedTierFilter: 'ALL',
+      activeTab: 'squad',
+      simDurationSeconds: 15,
+      isNationalCoach: false,
+      wonManagerOfYear: false
+    };
+
+    let simInterval = null;
+    let ballAnimInterval = null;
+    let customizerTempState = {
+      badgeIcon: 'fa-trophy',
+      primaryColor: '#10b981',
+      secondaryColor: '#06b6d4',
+      kitPattern: 'solid'
+    };
+
+    /* INITIALIZATION & SETUP */
+    window.onload = function() {
+      setupCountryModalUI();
+      
+      if (!loadGameProgress()) {
+        STARTER_PLAYERS.forEach(player => {
+          gameState.squad[player.pos] = player;
+          gameState.marketOwned.push(player);
+        });
+        initLeagueTable();
+      }
+
+      updateHeaderUI();
+      renderSquadPitch();
+      renderClubRoster();
+      renderMarket();
+      renderLeagueTable();
+      prepareNextMatchUI();
+
+      window.addEventListener('beforeunload', () => saveGameProgress());
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') saveGameProgress();
+      });
+    };
+
+    function showToast(message, icon = '💾') {
+      const toast = document.getElementById('toastNotification');
+      const msgEl = document.getElementById('toastMessage');
+      const iconEl = document.getElementById('toastIcon');
+
+      if (!toast || !msgEl) return;
+
+      msgEl.innerText = message;
+      if (iconEl) iconEl.innerText = icon;
+
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3000);
+    }
+
+    function saveGameProgress(notify = false) {
+      try {
+        const jsonStr = JSON.stringify(gameState);
+        localStorage.setItem('ufm_game_state', jsonStr);
+        if (notify) showToast("Career progress saved successfully!", "💾");
+      } catch (e) {
+        console.error("Save state error:", e);
+      }
+    }
+
+    function loadGameProgress() {
+      try {
+        const saved = localStorage.getItem('ufm_game_state');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === 'object') {
+            gameState = { ...gameState, ...parsed };
+            document.getElementById('clubSetupModal')?.classList.add('hidden');
+            showToast(`Welcome back! Career loaded (${gameState.clubName})`, "⚽");
+            return true;
+          }
+        }
+      } catch (e) {
+        console.error("Load state error:", e);
+      }
+      return false;
+    }
+
+    function openSaveLoadModal() {
+      document.getElementById('saveLoadModal')?.classList.remove('hidden');
+    }
+
+    function closeSaveLoadModal() {
+      document.getElementById('saveLoadModal')?.classList.add('hidden');
+    }
+
+    function exportSaveCode() {
+      try {
+        const dataStr = btoa(unescape(encodeURIComponent(JSON.stringify(gameState))));
+        const tempInput = document.createElement('textarea');
+        tempInput.value = dataStr;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempInput);
+        showToast("Save code copied to clipboard!", "📋");
+      } catch (e) {
+        showToast("Failed to copy save code", "⚠️");
+      }
+    }
+
+    function importSaveCode() {
+      const input = document.getElementById('importCodeInput')?.value.trim();
+      if (!input) {
+        showToast("Please paste a valid save code", "⚠️");
+        return;
+      }
+
+      try {
+        const jsonStr = decodeURIComponent(escape(atob(input)));
+        const parsed = JSON.parse(jsonStr);
+
+        if (parsed && parsed.clubName && parsed.squad) {
+          gameState = { ...gameState, ...parsed };
+          saveGameProgress();
+          
+          document.getElementById('clubSetupModal')?.classList.add('hidden');
+          closeSaveLoadModal();
+
+          updateHeaderUI();
+          renderSquadPitch();
+          renderClubRoster();
+          renderMarket();
+          renderLeagueTable();
+          prepareNextMatchUI();
+
+          showToast("Career successfully restored!", "🎉");
+        } else {
+          showToast("Invalid save code format", "⚠️");
+        }
+      } catch (e) {
+        showToast("Corrupted or invalid save code", "⚠️");
+      }
+    }
+
+    /* PACK OPENING SYSTEM */
+    function buyPack(packType) {
+      const cost = packType === 'WC_PACK' ? 20000 : 45000;
+      if (gameState.budget < cost) {
+        alert("⚠️ Insufficient funds! Win matches to earn budget.");
+        return;
+      }
+
+      gameState.budget -= cost;
+      saveGameProgress();
+      updateHeaderUI();
+
+      const modal = document.getElementById('packOpeningModal');
+      const stageOpening = document.getElementById('packOpeningStage');
+      const stageResults = document.getElementById('packResultsStage');
+
+      stageOpening.classList.remove('hidden');
+      stageResults.classList.add('hidden');
+      modal.classList.remove('hidden');
+
+      const sourcePool = packType === 'WC_PACK' ? WC_PACK_POOL : ICON_PACK_POOL;
+      const pulledCards = [];
+
+      for (let i = 0; i < 7; i++) {
+        pulledCards.push(weightedRandomPull(sourcePool));
+      }
+
+      pulledCards.forEach(card => {
+        if (!gameState.marketOwned.some(p => p.id === card.id)) {
+          gameState.marketOwned.push(card);
+        }
+      });
+
+      saveGameProgress();
+
+      setTimeout(() => {
+        stageOpening.classList.add('hidden');
+        stageResults.classList.remove('hidden');
+
+        const grid = document.getElementById('packRevealedCardsGrid');
+        grid.innerHTML = '';
+
+        pulledCards.forEach(card => {
+          let cardStyle = "card-gold";
+          if (card.tier === 'PRIME') cardStyle = "card-prime";
+          if (card.tier === 'WC_WINNERS') cardStyle = "card-wc-winner";
+
+          grid.innerHTML += `
+            <div class="${cardStyle} rounded-xl p-2 flex flex-col justify-between text-center shadow-xl animate-fade-in">
+              <div class="flex items-center justify-between text-xs font-black">
+                <span class="text-white">${card.ovr}</span>
+                <span class="text-[8px] bg-slate-950/60 px-1 rounded text-slate-200">${card.pos}</span>
+              </div>
+              <div class="text-lg my-1">${card.nation}</div>
+              <div class="text-[9px] font-extrabold text-white leading-tight truncate">${card.name}</div>
+            </div>
+          `;
+        });
+
+        renderClubRoster();
+        renderMarket();
+      }, 1500);
+    }
+
+    function weightedRandomPull(pool) {
+      const weights = pool.map(item => {
+        if (item.ovr >= 96) return 1;
+        if (item.ovr >= 94) return 3;
+        if (item.ovr >= 90) return 8;
+        return 20;
+      });
+
+      const totalWeight = weights.reduce((acc, w) => acc + w, 0);
+      let random = Math.random() * totalWeight;
+
+      for (let i = 0; i < pool.length; i++) {
+        if (random < weights[i]) {
+          return { ...pool[i], id: pool[i].id + '_' + Math.floor(Math.random() * 10000) };
+        }
+        random -= weights[i];
+      }
+
+      return { ...pool[0], id: pool[0].id + '_' + Math.floor(Math.random() * 10000) };
+    }
+
+    function closePackOpeningModal() {
+      document.getElementById('packOpeningModal').classList.add('hidden');
+    }
+
+    /* NAVIGATION & COUNTRY SETUP HANDLERS */
+    function setupCountryModalUI() {
+      const grid = document.getElementById('countrySelectGrid');
+      if (!grid) return;
+      grid.innerHTML = '';
+      Object.keys(NATIONS_DATA).forEach((country) => {
+        const nation = NATIONS_DATA[country];
+        const isSelected = country === gameState.country;
+        grid.innerHTML += `
+          <button type="button" onclick="selectCountry('${country}')" id="countryBtn-${country}" class="p-3 bg-slate-950 border ${isSelected ? 'border-emerald-500 bg-emerald-500/10' : 'border-slate-800'} hover:border-emerald-500/50 rounded-xl flex flex-col items-center justify-center gap-1 transition">
+            <span class="text-2xl">${nation.flag}</span>
+            <span class="text-xs font-bold ${isSelected ? 'text-emerald-400' : 'text-slate-300'}">${country}</span>
+          </button>
+        `;
+      });
+    }
+
+    function selectCountry(country) {
+      gameState.country = country;
+      setupCountryModalUI();
+    }
+
+    function finalizeClubSetup() {
+      const nameInput = document.getElementById('setupClubNameInput').value.trim();
+      if (nameInput) gameState.clubName = nameInput;
+
+      document.getElementById('clubSetupModal').classList.add('hidden');
+      initLeagueTable();
+      saveGameProgress();
+      updateHeaderUI();
+      renderLeagueTable();
+      prepareNextMatchUI();
+    }
+
+    /* CLUB CUSTOMIZATION HANDLERS */
+    function openClubCustomizer() {
+      document.getElementById('custClubNameInput').value = gameState.clubName;
+      document.getElementById('custStadiumInput').value = gameState.stadiumName;
+      document.getElementById('custManagerInput').value = gameState.managerName;
+      document.getElementById('custPrimaryColor').value = gameState.primaryColor;
+      document.getElementById('custSecondaryColor').value = gameState.secondaryColor;
+
+      customizerTempState = {
+        badgeIcon: gameState.badgeIcon,
+        primaryColor: gameState.primaryColor,
+        secondaryColor: gameState.secondaryColor,
+        kitPattern: gameState.kitPattern
+      };
+
+      renderBadgeIconGrid();
+      selectKitPattern(gameState.kitPattern);
+      updateCustomizerPreview();
+
+      document.getElementById('clubCustomizerModal').classList.remove('hidden');
+    }
+
+    function closeClubCustomizer() {
+      document.getElementById('clubCustomizerModal').classList.add('hidden');
+    }
+
+    function renderBadgeIconGrid() {
+      const grid = document.getElementById('badgeIconGrid');
+      if (!grid) return;
+      grid.innerHTML = '';
+
+      BADGE_ICONS.forEach(icon => {
+        const isSel = icon === customizerTempState.badgeIcon;
+        grid.innerHTML += `
+          <button type="button" onclick="selectBadgeIcon('${icon}')" class="p-2.5 bg-slate-950 border ${isSel ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10' : 'border-slate-800 text-slate-400'} hover:border-emerald-500/50 rounded-xl transition text-center text-base">
+            <i class="fa-solid ${icon}"></i>
+          </button>
+        `;
+      });
+    }
+
+    function selectBadgeIcon(icon) {
+      customizerTempState.badgeIcon = icon;
+      renderBadgeIconGrid();
+      updateCustomizerPreview();
+    }
+
+    function selectKitPattern(pat) {
+      customizerTempState.kitPattern = pat;
+      ['solid', 'stripes', 'hoops', 'sash'].forEach(p => {
+        const btn = document.getElementById(`kitPat-${p}`);
+        if (btn) {
+          btn.className = (p === pat) 
+            ? "py-2 bg-slate-950 border border-emerald-500 rounded-xl font-bold text-emerald-400"
+            : "py-2 bg-slate-950 border border-slate-800 rounded-xl font-bold text-slate-400";
+        }
+      });
+      updateCustomizerPreview();
+    }
+
+    function updateCustomizerPreview() {
+      const stadium = document.getElementById('custStadiumInput')?.value || 'Apex Arena';
+      const pColor = document.getElementById('custPrimaryColor')?.value || '#10b981';
+      const sColor = document.getElementById('custSecondaryColor')?.value || '#06b6d4';
+
+      const badgeIconEl = document.getElementById('customPreviewBadgeIcon');
+      if (badgeIconEl) badgeIconEl.className = `fa-solid ${customizerTempState.badgeIcon}`;
+
+      const badgeBgEl = document.getElementById('customPreviewBadge');
+      if (badgeBgEl) badgeBgEl.style.background = `linear-gradient(135deg, ${pColor} 0%, ${sColor} 100%)`;
+
+      const jersey = document.getElementById('customPreviewJersey');
+      if (jersey) jersey.style.background = pColor;
+
+      const overlay = document.getElementById('customPreviewKitOverlay');
+      if (overlay) {
+        if (customizerTempState.kitPattern === 'stripes') {
+          overlay.style.background = `repeating-linear-gradient(90deg, transparent, transparent 8px, ${sColor} 8px, ${sColor} 16px)`;
+        } else if (customizerTempState.kitPattern === 'hoops') {
+          overlay.style.background = `repeating-linear-gradient(0deg, transparent, transparent 8px, ${sColor} 8px, ${sColor} 16px)`;
+        } else if (customizerTempState.kitPattern === 'sash') {
+          overlay.style.background = `linear-gradient(135deg, transparent 40%, ${sColor} 40%, ${sColor} 60%, transparent 60%)`;
+        } else {
+          overlay.style.background = 'none';
+        }
+      }
+
+      const stdEl = document.getElementById('customPreviewStadium');
+      if (stdEl) stdEl.innerText = stadium;
+    }
+
+    function saveClubCustomization() {
+      const name = document.getElementById('custClubNameInput').value.trim();
+      const stadium = document.getElementById('custStadiumInput').value.trim();
+      const manager = document.getElementById('custManagerInput').value.trim();
+
+      if (name) gameState.clubName = name;
+      if (stadium) gameState.stadiumName = stadium;
+      if (manager) gameState.managerName = manager;
+
+      gameState.badgeIcon = customizerTempState.badgeIcon;
+      gameState.primaryColor = document.getElementById('custPrimaryColor').value;
+      gameState.secondaryColor = document.getElementById('custSecondaryColor').value;
+      gameState.kitPattern = customizerTempState.kitPattern;
+
+      const userRow = gameState.leagueTable.find(t => t.isUser);
+      if (userRow) userRow.name = gameState.clubName;
+
+      saveGameProgress();
+      updateHeaderUI();
+      renderLeagueTable();
+      prepareNextMatchUI();
+
+      closeClubCustomizer();
+      showToast("Club customization saved!", "🎨");
+    }
+
+    function goToPlayMatch() {
+      switchTab('league');
+      const matchCard = document.getElementById('simScoreUser');
+      if (matchCard) {
+        matchCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+
+    function switchTab(tabId) {
+      gameState.activeTab = tabId;
+
+      ['squad', 'market', 'league'].forEach(t => {
+        const tabElem = document.getElementById(`tab-${t}`);
+        if (tabElem) tabElem.classList.add('hidden');
+        
+        const dtBtn = document.getElementById(`tabBtn-${t}`);
+        if (dtBtn) {
+          dtBtn.className = (t === tabId)
+            ? "px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition flex items-center gap-2 bg-emerald-500 text-slate-950 shadow-md"
+            : "px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition flex items-center gap-2 text-slate-400 hover:text-white";
+        }
+
+        const mobBtn = document.getElementById(`mobTabBtn-${t}`);
+        if (mobBtn) {
+          mobBtn.className = (t === tabId)
+            ? "flex-1 py-2.5 text-xs font-bold text-emerald-400 bg-slate-900 flex items-center justify-center gap-1.5 border-b-2 border-emerald-400"
+            : "flex-1 py-2.5 text-xs font-bold text-slate-400 flex items-center justify-center gap-1.5";
+        }
+      });
+
+      const activeElem = document.getElementById(`tab-${tabId}`);
+      if (activeElem) activeElem.classList.remove('hidden');
+    }
+
+    /* SQUAD BUILDER & PITCH ENGINE */
+    function calculateSquadRating() {
+      const positions = Object.keys(gameState.squad);
+      let total = 0;
+      let count = 0;
+      positions.forEach(pos => {
+        if (gameState.squad[pos]) {
+          total += gameState.squad[pos].ovr;
+          count++;
+        }
+      });
+      return count === 11 ? Math.round(total / 11) : 60;
+    }
+
+    function updateHeaderUI() {
+      const nation = NATIONS_DATA[gameState.country];
+      const league = nation.leagues[gameState.currentLeagueIndex];
+
+      document.getElementById('headerClubName').innerText = gameState.clubName.toUpperCase();
+      document.getElementById('headerLeagueFlag').innerText = nation.flag;
+      document.getElementById('headerLeagueTier').innerText = league.name;
+      document.getElementById('userBudget').innerText = `$${gameState.budget.toLocaleString()}`;
+      document.getElementById('marketBudgetTag').innerText = `$${gameState.budget.toLocaleString()}`;
+      document.getElementById('squadOvrDisplay').innerText = calculateSquadRating();
+      document.getElementById('pitchOvrText').innerText = calculateSquadRating();
+
+      if (document.getElementById('headerStadiumName')) {
+        document.getElementById('headerStadiumName').innerText = gameState.stadiumName || 'Apex Arena';
+      }
+
+      if (document.getElementById('headerClubBadgeIcon')) {
+        document.getElementById('headerClubBadgeIcon').className = `fa-solid ${gameState.badgeIcon || 'fa-trophy'}`;
+      }
+
+      if (document.getElementById('headerClubBadge')) {
+        const pColor = gameState.primaryColor || '#10b981';
+        const sColor = gameState.secondaryColor || '#06b6d4';
+        document.getElementById('headerClubBadge').style.background = `linear-gradient(135deg, ${pColor} 0%, ${sColor} 100%)`;
+      }
+    }
+
+    function renderSquadPitch() {
+      const positions = ['LW', 'ST', 'RW', 'LCM', 'CAM', 'RCM', 'LB', 'LCB', 'RCB', 'RB', 'GK'];
+
+      positions.forEach(pos => {
+        const slotEl = document.getElementById(`slot-${pos}`);
+        if (!slotEl) return;
+
+        const player = gameState.squad[pos];
+
+        if (player) {
+          let cardGlow = "border-amber-600 bg-amber-950/60";
+          if (player.tier === 'SILVER') cardGlow = "border-slate-400 bg-slate-900/80";
+          if (player.tier === 'GOLD') cardGlow = "border-amber-400 bg-amber-900/80";
+          if (player.tier === 'PRIME') cardGlow = "border-cyan-400 bg-indigo-950/90 shadow-lg shadow-cyan-500/30";
+
+          slotEl.innerHTML = `
+            <div class="w-12 h-16 sm:w-16 sm:h-20 rounded-xl border-2 ${cardGlow} flex flex-col justify-between p-1 shadow-xl relative transition transform group-hover:scale-105">
+              <div class="flex items-center justify-between text-[10px] font-black leading-none">
+                <span class="text-white">${player.ovr}</span>
+                <span class="text-slate-300 text-[8px]">${player.pos}</span>
+              </div>
+              <div class="text-[18px] sm:text-[22px] my-auto text-center">${player.nation}</div>
+              <div class="text-[9px] font-bold text-white truncate max-w-full leading-none text-center bg-slate-950/80 rounded px-0.5 py-0.5">
+                ${player.name.split(' ').pop()}
+              </div>
+            </div>
+          `;
+        } else {
+          slotEl.innerHTML = `
+            <div class="w-12 h-16 sm:w-16 sm:h-20 rounded-xl border-2 border-dashed border-slate-600 bg-slate-950/40 flex flex-col items-center justify-center p-1 text-slate-500 hover:border-emerald-400 hover:text-emerald-400 transition">
+              <i class="fa-solid fa-plus text-xs mb-1"></i>
+              <span class="text-[9px] font-bold">${pos}</span>
+            </div>
+          `;
+        }
+      });
+    }
+
+    function renderClubRoster() {
+      const container = document.getElementById('clubRosterContainer');
+      if (!container) return;
+      container.innerHTML = '';
+
+      document.getElementById('clubRosterCount').innerText = `${gameState.marketOwned.length} Players`;
+
+      gameState.marketOwned.forEach(player => {
+        const isStarting = Object.values(gameState.squad).some(p => p && p.id === player.id);
+
+        container.innerHTML += `
+          <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between gap-3 hover:border-slate-700 transition">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center font-arcade font-bold text-xs text-amber-400">
+                ${player.ovr}
+              </div>
+              <div>
+                <div class="font-fut font-bold text-sm text-white leading-tight">${player.name}</div>
+                <div class="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                  <span class="bg-slate-800 px-1.5 py-0.2 rounded font-mono text-slate-300">${player.pos}</span>
+                  <span>${player.nation}</span>
+                  <span class="text-emerald-400">${player.tier}</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              ${isStarting 
+                ? `<span class="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-1 rounded-lg font-bold">STARTING XI</span>`
+                : `<button onclick="openSlotSelectorModalForPlayer('${player.id}')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold rounded-lg transition">SUB IN</button>`
+              }
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    function openSlotSelectorModalForPlayer(playerId) {
+      const player = gameState.marketOwned.find(p => p.id === playerId);
+      if (!player) return;
+      assignPlayerToSlot(player.pos, playerId);
+    }
+
+    function openSlotSelector(pos) {
+      const modal = document.getElementById('slotSelectorModal');
+      document.getElementById('slotModalTitle').innerText = `ASSIGN PLAYER TO ${pos}`;
+
+      const container = document.getElementById('slotModalPlayersList');
+      container.innerHTML = '';
+
+      gameState.marketOwned.forEach(player => {
+        container.innerHTML += `
+          <div onclick="assignPlayerToSlot('${pos}', '${player.id}')" class="p-3 bg-slate-950 border border-slate-800 hover:border-emerald-500 rounded-xl flex items-center justify-between cursor-pointer transition">
+            <div class="flex items-center gap-3">
+              <div class="font-arcade text-emerald-400 font-bold text-sm">${player.ovr}</div>
+              <div>
+                <div class="font-bold text-white text-sm">${player.name}</div>
+                <div class="text-xs text-slate-400">${player.pos} • ${player.tier}</div>
+              </div>
+            </div>
+            <span class="text-xs font-bold text-emerald-400 uppercase">Select</span>
+          </div>
+        `;
+      });
+
+      modal.classList.remove('hidden');
+    }
+
+    function assignPlayerToSlot(pos, playerId) {
+      const player = gameState.marketOwned.find(p => p.id === playerId);
+      if (!player) return;
+
+      Object.keys(gameState.squad).forEach(k => {
+        if (gameState.squad[k] && gameState.squad[k].id === playerId) {
+          gameState.squad[k] = null;
+        }
+      });
+
+      gameState.squad[pos] = player;
+
+      closeSlotSelectorModal();
+      saveGameProgress();
+      renderSquadPitch();
+      renderClubRoster();
+      updateHeaderUI();
+    }
+
+    function closeSlotSelectorModal() {
+      document.getElementById('slotSelectorModal').classList.add('hidden');
+    }
+
+    /* TRANSFER MARKET HANDLERS */
+    function setMarketTierFilter(tier) {
+      gameState.selectedTierFilter = tier;
+      ['ALL', 'BRONZE', 'SILVER', 'GOLD', 'PRIME', 'WC_WINNERS', 'WC_RUNNERS', 'WC_BEST', 'UCL_WINNERS', 'BALLON_DOR', 'PLAYER_OF_YEAR'].forEach(t => {
+        const btn = document.getElementById(`tierFilter-${t}`);
+        if (btn) {
+          btn.className = (t === tier)
+            ? "px-3 py-1.5 rounded-lg text-emerald-400 bg-slate-800 transition whitespace-nowrap"
+            : "px-3 py-1.5 rounded-lg text-slate-400 hover:text-white transition whitespace-nowrap";
+        }
+      });
+      renderMarket();
+    }
+
+    function renderMarket() {
+      const grid = document.getElementById('marketCardsGrid');
+      if (!grid) return;
+      grid.innerHTML = '';
+
+      const searchQuery = (document.getElementById('marketSearchInput')?.value || '').toLowerCase();
+      const posFilter = document.getElementById('marketPosSelect')?.value || 'ALL';
+
+      const filtered = MARKET_PLAYERS_DATABASE.filter(p => {
+        const matchesTier = gameState.selectedTierFilter === 'ALL' || p.tier === gameState.selectedTierFilter;
+        const matchesSearch = p.name.toLowerCase().includes(searchQuery);
+        
+        let matchesPos = true;
+        if (posFilter === 'GK') matchesPos = p.pos === 'GK';
+        if (posFilter === 'DEF') matchesPos = ['LB', 'LCB', 'RCB', 'RB'].includes(p.pos);
+        if (posFilter === 'MID') matchesPos = ['LCM', 'CAM', 'RCM'].includes(p.pos);
+        if (posFilter === 'FWD') matchesPos = ['LW', 'ST', 'RW'].includes(p.pos);
+
+        return matchesTier && matchesSearch && matchesPos;
+      });
+
+      if (filtered.length === 0) {
+        grid.innerHTML = `<div class="col-span-full py-12 text-center text-slate-500 font-fut text-sm">No players match current market filters.</div>`;
+        return;
+      }
+
+      filtered.forEach(player => {
+        const isOwned = gameState.marketOwned.some(p => p.id === player.id);
+        const canAfford = gameState.budget >= player.price;
+
+        let cardStyle = "card-bronze";
+        let tierBadgeText = player.tier;
+
+        if (player.tier === 'SILVER') cardStyle = "card-silver";
+        else if (player.tier === 'GOLD') cardStyle = "card-gold";
+        else if (player.tier === 'PRIME') { cardStyle = "card-prime"; tierBadgeText = "PRIME ICON"; }
+        else if (player.tier === 'WC_WINNERS') { cardStyle = "card-wc-winner"; tierBadgeText = "🏆 WC WINNER '26"; }
+        else if (player.tier === 'WC_RUNNERS') { cardStyle = "card-wc-runner"; tierBadgeText = "🥈 WC 2ND PLACE"; }
+        else if (player.tier === 'WC_BEST') { cardStyle = "card-wc-best"; tierBadgeText = "🌟 WC BEST XI"; }
+        else if (player.tier === 'UCL_WINNERS') { cardStyle = "card-ucl-winner"; tierBadgeText = "🇪🇺 UCL CHAMP"; }
+        else if (player.tier === 'BALLON_DOR') { cardStyle = "card-ballondor"; tierBadgeText = "🥇 BALLON D'OR"; }
+        else if (player.tier === 'PLAYER_OF_YEAR') { cardStyle = "card-poty"; tierBadgeText = "👑 PLAYER OF THE YEAR"; }
+
+        grid.innerHTML += `
+          <div class="${cardStyle} rounded-2xl p-4 flex flex-col justify-between space-y-3 transition transform hover:-translate-y-1">
+            <div class="flex items-center justify-between">
+              <span class="font-arcade text-2xl font-black text-white">${player.ovr}</span>
+              <span class="text-xs font-bold font-mono bg-slate-950/60 px-2 py-0.5 rounded text-slate-200">${player.pos}</span>
+            </div>
+
+            <div class="text-center py-2 space-y-1">
+              <div class="text-2xl">${player.nation}</div>
+              <div class="font-fut font-extrabold text-base text-white leading-tight truncate">${player.name}</div>
+              <div class="text-[10px] font-bold text-amber-300 uppercase tracking-widest">${tierBadgeText}</div>
+            </div>
+
+            <div class="border-t border-white/10 pt-2 space-y-2">
+              <div class="flex items-center justify-between text-xs font-bold">
+                <span class="text-slate-300">PRICE:</span>
+                <span class="text-emerald-400 font-arcade">$${player.price.toLocaleString()}</span>
+              </div>
+
+              ${isOwned 
+                ? `<button disabled class="w-full py-2 bg-slate-800 text-slate-500 text-xs font-bold rounded-xl cursor-not-allowed">OWNED</button>`
+                : `<button onclick="buyPlayerFromMarket('${player.id}')" ${!canAfford ? 'disabled' : ''} class="w-full py-2 ${canAfford ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950' : 'bg-slate-800 text-slate-500 cursor-not-allowed'} font-bold text-xs rounded-xl transition shadow">
+                    ${canAfford ? 'BUY PLAYER' : 'INSUFFICIENT $'}
+                   </button>`
+              }
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    function buyPlayerFromMarket(playerId) {
+      const player = MARKET_PLAYERS_DATABASE.find(p => p.id === playerId);
+      if (!player || gameState.budget < player.price) return;
+
+      gameState.budget -= player.price;
+      gameState.marketOwned.push(player);
+
+      if (!gameState.squad[player.pos]) {
+        gameState.squad[player.pos] = player;
+      }
+
+      saveGameProgress();
+      updateHeaderUI();
+      renderSquadPitch();
+      renderClubRoster();
+      renderMarket();
+    }
+
+    /* LEAGUE STANDINGS & MATCH SIMULATOR ENGINE */
+    function initLeagueTable() {
+      const currentLeague = NATIONS_DATA[gameState.country].leagues[gameState.currentLeagueIndex];
+      const baseOvr = currentLeague.avgRating;
+
+      const compClubs = [
+        gameState.clubName,
+        'FC Thunder', 'Real Strikers', 'Velocity United', 'Ironclad City',
+        'Titan Athletic', 'Solaris FC', 'Apex Predators', 'Vanguard XI', 'Dynamo Sporting',
+        'Metro FC', 'Olympia City', 'Royal Athletics', 'Phoenix FC', 'Zenith United',
+        'Atlas Wanderers', 'Starlight City', 'Valiant Sporting', 'Horizon United', 'Eclipse FC'
+      ];
+
+      gameState.leagueTable = compClubs.map((name, idx) => ({
+        pos: idx + 1,
+        name: name,
+        isUser: name === gameState.clubName,
+        ovr: name === gameState.clubName ? calculateSquadRating() : Math.round(baseOvr + (Math.random() * 6 - 3)),
+        p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0
+      }));
+    }
+
+    function renderLeagueTable() {
+      const nation = NATIONS_DATA[gameState.country];
+      const league = nation.leagues[gameState.currentLeagueIndex];
+
+      document.getElementById('leagueFlag').innerText = nation.flag;
+      document.getElementById('leagueTitle').innerText = league.name.toUpperCase();
+      document.getElementById('seasonProgressText').innerText = `Match ${gameState.seasonMatchCount} / 19`;
+
+      const userRow = gameState.leagueTable.find(t => t.isUser);
+      if (userRow) userRow.ovr = calculateSquadRating();
+
+      gameState.leagueTable.sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
+
+      const tbody = document.getElementById('leagueTableBody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      gameState.leagueTable.forEach((team, idx) => {
+        const rank = idx + 1;
+        team.pos = rank;
+
+        let rankBadgeClass = "bg-slate-800 text-slate-400";
+        if (rank <= 3) rankBadgeClass = "bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30";
+        else if (gameState.currentLeagueIndex === 3 && rank <= 6) rankBadgeClass = "bg-cyan-500/20 text-cyan-400 font-bold border border-cyan-500/30";
+
+        tbody.innerHTML += `
+          <tr class="${team.isUser ? 'bg-emerald-950/40 font-semibold border-l-4 border-l-emerald-400' : 'hover:bg-slate-800/30'} transition">
+            <td class="py-2.5 px-3">
+              <span class="inline-flex items-center justify-center w-5 h-5 rounded-md text-[10px] ${rankBadgeClass}">
+                ${rank}
+              </span>
+            </td>
+            <td class="py-2.5 px-3 font-medium text-white flex items-center gap-2">
+              <span>${team.isUser ? '⚽' : '🛡️'}</span>
+              <span class="${team.isUser ? 'text-emerald-400 font-bold' : ''}">${team.name}</span>
+            </td>
+            <td class="py-2.5 px-2 text-center text-slate-400 font-mono">${team.ovr}</td>
+            <td class="py-2.5 px-2 text-center font-mono">${team.p}</td>
+            <td class="py-2.5 px-2 text-center font-mono text-emerald-400">${team.w}</td>
+            <td class="py-2.5 px-2 text-center font-mono text-amber-400">${team.d}</td>
+            <td class="py-2.5 px-2 text-center font-mono text-rose-400">${team.l}</td>
+            <td class="py-2.5 px-2 text-center font-mono ${team.gd > 0 ? 'text-emerald-400' : team.gd < 0 ? 'text-rose-400' : 'text-slate-400'}">${team.gd > 0 ? '+' : ''}${team.gd}</td>
+            <td class="py-2.5 px-3 text-right font-arcade font-bold text-white text-sm">${team.pts}</td>
+          </tr>
+        `;
+      });
+    }
+
+    function setSimDuration(seconds) {
+      gameState.simDurationSeconds = seconds;
+      
+      const btnFast = document.getElementById('speedBtn-fast');
+      const btn5Min = document.getElementById('speedBtn-5min');
+
+      if (seconds === 300) {
+        btn5Min.className = "px-2.5 py-1 rounded bg-emerald-500 text-slate-950 font-bold text-[10px] uppercase";
+        btnFast.className = "px-2.5 py-1 rounded bg-slate-800 text-slate-400 hover:text-white font-bold text-[10px] uppercase";
+      } else {
+        btnFast.className = "px-2.5 py-1 rounded bg-emerald-500 text-slate-950 font-bold text-[10px] uppercase";
+        btn5Min.className = "px-2.5 py-1 rounded bg-slate-800 text-slate-400 hover:text-white font-bold text-[10px] uppercase";
+      }
+    }
+
+    function prepareNextMatchUI() {
+      const userOvr = calculateSquadRating();
+      const oppTable = gameState.leagueTable.filter(t => !t.isUser);
+      if (oppTable.length === 0) return;
+
+      const oppTeam = oppTable[(gameState.seasonMatchCount - 1) % oppTable.length];
+
+      document.getElementById('simUserClubName').innerText = gameState.clubName;
+      document.getElementById('simUserClubOvr').innerText = `OVR: ${userOvr}`;
+      document.getElementById('simOpponentName').innerText = oppTeam.name;
+      document.getElementById('simOpponentOvr').innerText = `OVR: ${oppTeam.ovr}`;
+
+      if (document.getElementById('simUserBadgeIcon')) {
+        document.getElementById('simUserBadgeIcon').className = `fa-solid ${gameState.badgeIcon || 'fa-shield'}`;
+      }
+      if (document.getElementById('simUserBadgeContainer')) {
+        const pColor = gameState.primaryColor || '#10b981';
+        const sColor = gameState.secondaryColor || '#06b6d4';
+        document.getElementById('simUserBadgeContainer').style.background = `linear-gradient(135deg, ${pColor} 0%, ${sColor} 100%)`;
+      }
+
+      document.getElementById('simScoreUser').innerText = '0';
+      document.getElementById('simScoreOpp').innerText = '0';
+      document.getElementById('simTimeDisplay').innerText = "00'";
+
+      const badge = document.getElementById('matchTypeBadge');
+      if (gameState.seasonMatchCount === 19) {
+        badge.innerText = "🏆 TITLE DECIDER FINAL";
+        badge.className = "text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/40 px-2 py-0.5 rounded font-bold uppercase";
+      } else {
+        badge.innerText = `League Match ${gameState.seasonMatchCount}`;
+        badge.className = "text-[9px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-bold uppercase";
+      }
+
+      document.getElementById('simCommentaryFeed').innerText = `Matchday ${gameState.seasonMatchCount}: Kick-off ready against ${oppTeam.name}!`;
+
+      const ball = document.getElementById('simBallDot');
+      if (ball) {
+        ball.style.transition = 'left 0.4s ease-out, top 0.4s ease-out';
+        ball.style.left = '50%';
+        ball.style.top = '50%';
+      }
+    }
+
+    /* SMOOTH FAST BALL PHYSICS RADAR ENGINE */
+    function startBallAnimation() {
+      if (ballAnimInterval) clearInterval(ballAnimInterval);
+      const ball = document.getElementById('simBallDot');
+      if (!ball) return;
+
+      ball.style.transition = 'left 0.25s cubic-bezier(0.25, 1, 0.5, 1), top 0.25s cubic-bezier(0.25, 1, 0.5, 1)';
+
+      ballAnimInterval = setInterval(() => {
+        if (!ball) return;
+
+        let targetX, targetY;
+        const flowRoll = Math.random();
+
+        if (flowRoll < 0.45) {
+          // Midfield passing buildup
+          targetX = Math.floor(Math.random() * 40 + 30);
+          targetY = Math.floor(Math.random() * 70 + 15);
+        } else if (flowRoll < 0.75) {
+          // Attack towards away goal (Right)
+          targetX = Math.floor(Math.random() * 30 + 65);
+          targetY = Math.floor(Math.random() * 60 + 20);
+        } else {
+          // Attack towards home goal (Left)
+          targetX = Math.floor(Math.random() * 30 + 5);
+          targetY = Math.floor(Math.random() * 60 + 20);
+        }
+
+        ball.style.left = `${targetX}%`;
+        ball.style.top = `${targetY}%`;
+      }, 280);
+    }
+
+    function triggerGoalBallAnim(isUserGoal) {
+      const ball = document.getElementById('simBallDot');
+      if (!ball) return;
+
+      ball.style.transition = 'left 0.2s ease-in, top 0.2s ease-in';
+      
+      if (isUserGoal) {
+        ball.style.left = '96%';
+        ball.style.top = `${Math.floor(Math.random() * 30 + 35)}%`;
+      } else {
+        ball.style.left = '4%';
+        ball.style.top = `${Math.floor(Math.random() * 30 + 35)}%`;
+      }
+
+      setTimeout(() => {
+        if (ball) {
+          ball.style.transition = 'left 0.4s ease-out, top 0.4s ease-out';
+          ball.style.left = '50%';
+          ball.style.top = '50%';
+        }
+      }, 1200);
+    }
+
+    function stopBallAnimation() {
+      if (ballAnimInterval) {
+        clearInterval(ballAnimInterval);
+        ballAnimInterval = null;
+      }
+      const ball = document.getElementById('simBallDot');
+      if (ball) {
+        ball.style.transition = 'left 0.5s ease-out, top 0.5s ease-out';
+        ball.style.left = '50%';
+        ball.style.top = '50%';
+      }
+    }
+
+    function toggleMatchSimulation() {
+      const btn = document.getElementById('startSimBtn');
+      if (simInterval) return;
+
+      btn.disabled = true;
+      btn.innerHTML = `<span>SIMULATING MATCH...</span>`;
+
+      let minute = 0;
+      let userScore = 0;
+      let oppScore = 0;
+
+      const userOvr = calculateSquadRating();
+      const oppTable = gameState.leagueTable.filter(t => !t.isUser);
+      const oppTeam = oppTable[(gameState.seasonMatchCount - 1) % oppTable.length];
+
+      startBallAnimation();
+
+      const totalSteps = 90;
+      const tickMs = (gameState.simDurationSeconds * 1000) / totalSteps;
+
+      simInterval = setInterval(() => {
+        minute++;
+        document.getElementById('simTimeDisplay').innerText = `${minute}'`;
+
+        if (Math.random() < 0.06) {
+          const userAdvantage = (userOvr - oppTeam.ovr) * 0.02;
+          const userGoalProb = 0.5 + userAdvantage;
+
+          if (Math.random() < userGoalProb) {
+            userScore++;
+            document.getElementById('simScoreUser').innerText = userScore;
+            document.getElementById('simCommentaryFeed').innerText = `⚽ GOAL! Beautiful attack finishes in the net for ${gameState.clubName}! (${minute}')`;
+            triggerGoalBallAnim(true);
+          } else {
+            oppScore++;
+            document.getElementById('simScoreOpp').innerText = oppScore;
+            document.getElementById('simCommentaryFeed').innerText = `⚽ GOAL! ${oppTeam.name} counter-attacks and scores! (${minute}')`;
+            triggerGoalBallAnim(false);
+          }
+        } else if (minute % 15 === 0) {
+          document.getElementById('simCommentaryFeed').innerText = `Tense battle in midfield as both teams fight for possession... (${minute}')`;
+        }
+
+        if (minute >= 90) {
+          clearInterval(simInterval);
+          simInterval = null;
+          stopBallAnimation();
+          btn.disabled = false;
+          btn.innerHTML = `<i class="fa-solid fa-play"></i> <span>START MATCH</span>`;
+
+          finishMatchSimulation(userScore, oppScore, oppTeam);
+        }
+      }, tickMs);
+    }
+
+    function finishMatchSimulation(userScore, oppScore, oppTeam) {
+      let reward = 100;
+      if (userScore > oppScore) reward = 1500;
+      else if (userScore === oppScore) reward = 500;
+
+      gameState.budget += reward;
+
+      const userRow = gameState.leagueTable.find(t => t.isUser);
+      userRow.p++;
+      userRow.gf += userScore;
+      userRow.ga += oppScore;
+      userRow.gd = userRow.gf - userRow.ga;
+
+      if (userScore > oppScore) { userRow.w++; userRow.pts += 3; }
+      else if (userScore === oppScore) { userRow.d++; userRow.pts += 1; }
+      else { userRow.l++; }
+
+      const oppRow = gameState.leagueTable.find(t => t.name === oppTeam.name);
+      oppRow.p++;
+      oppRow.gf += oppScore;
+      oppRow.ga += userScore;
+      oppRow.gd = oppRow.gf - oppRow.ga;
+
+      if (oppScore > userScore) { oppRow.w++; oppRow.pts += 3; }
+      else if (userScore === oppScore) { oppRow.d++; oppRow.pts += 1; }
+      else { oppRow.l++; }
+
+      simulateOtherAILeagueMatches(oppTeam.name);
+
+      saveGameProgress();
+      updateHeaderUI();
+      renderLeagueTable();
+
+      const modal = document.getElementById('matchResultModal');
+      document.getElementById('modalScoreText').innerText = `${userScore} - ${oppScore}`;
+      document.getElementById('modalRewardText').innerText = `+$${reward.toLocaleString()}`;
+
+      if (userScore > oppScore) {
+        document.getElementById('modalResultTitle').innerText = "VICTORY!";
+        document.getElementById('modalResultSubtitle').innerText = "Outstanding tactical masterclass!";
+      } else if (userScore === oppScore) {
+        document.getElementById('modalResultTitle').innerText = "DRAW";
+        document.getElementById('modalResultSubtitle').innerText = "Hard-fought point on matchday.";
+      } else {
+        document.getElementById('modalResultTitle').innerText = "DEFEAT";
+        document.getElementById('modalResultSubtitle').innerText = "Regroup and prepare for the next fixture.";
+      }
+
+      modal.classList.remove('hidden');
+
+      gameState.seasonMatchCount++;
+      if (gameState.seasonMatchCount > 19) {
+        processSeasonEnd();
+      } else {
+        prepareNextMatchUI();
+      }
+    }
+
+    function simulateOtherAILeagueMatches(playedOpponentName) {
+      const aiTeams = gameState.leagueTable.filter(t => !t.isUser && t.name !== playedOpponentName);
+      for (let i = 0; i < aiTeams.length; i += 2) {
+        if (i + 1 < aiTeams.length) {
+          const t1 = aiTeams[i];
+          const t2 = aiTeams[i + 1];
+
+          const g1 = Math.floor(Math.random() * 3);
+          const g2 = Math.floor(Math.random() * 3);
+
+          t1.p++; t1.gf += g1; t1.ga += g2; t1.gd = t1.gf - t1.ga;
+          t2.p++; t2.gf += g2; t2.ga += g1; t2.gd = t2.gf - t2.ga;
+
+          if (g1 > g2) { t1.w++; t1.pts += 3; t2.l++; }
+          else if (g1 < g2) { t2.w++; t2.pts += 3; t1.l++; }
+          else { t1.d++; t1.pts += 1; t2.d++; t2.pts += 1; }
+        }
+      }
+    }
+
+    function processSeasonEnd() {
+      gameState.leagueTable.sort((a, b) => b.pts - a.pts || b.gd - a.gd);
+      const userRank = gameState.leagueTable.findIndex(t => t.isUser) + 1;
+
+      setTimeout(() => {
+        if (userRank === 1 && gameState.currentLeagueIndex === 3) {
+          gameState.wonManagerOfYear = true;
+          gameState.isNationalCoach = true;
+          document.getElementById('nationalTeamOfferName').innerText = gameState.country;
+          document.getElementById('managerAwardModal').classList.remove('hidden');
+        } else if (userRank <= 3 && gameState.currentLeagueIndex < 3) {
+          gameState.currentLeagueIndex++;
+          alert(`🎉 SEASON OVER! You finished #${userRank} and secured PROMOTION to ${NATIONS_DATA[gameState.country].leagues[gameState.currentLeagueIndex].name}!`);
+        } else if (gameState.currentLeagueIndex === 3) {
+          if (userRank <= 6) {
+            alert(`🏆 CHAMPIONS LEAGUE QUALIFICATION! You finished #${userRank} in top division!`);
+          } else if (userRank <= 9) {
+            alert(`🇪🇺 EUROPA LEAGUE QUALIFICATION! You finished #${userRank} in top division!`);
+          } else if (userRank === 10) {
+            alert(`⚽ CONFERENCE LEAGUE QUALIFICATION! You finished #${userRank} in top division!`);
+          } else {
+            alert(`Season finished #${userRank}. Prepare for next season!`);
+          }
+        } else {
+          alert(`Season finished #${userRank}. Missed promotion (Top 3 required). Try again next season!`);
+        }
+
+        gameState.seasonMatchCount = 1;
+        initLeagueTable();
+        saveGameProgress();
+        updateHeaderUI();
+        renderLeagueTable();
+        prepareNextMatchUI();
+      }, 500);
+    }
+
+    function acceptNationalJobOffer() {
+      document.getElementById('managerAwardModal').classList.add('hidden');
+      alert(`🌎 CONGRATULATIONS! You are now the official Head Manager of ${gameState.country} for the 2026 World Cup & Nations League tournament!`);
+    }
+
+    function closeMatchResultModal() {
+      document.getElementById('matchResultModal').classList.add('hidden');
+      switchTab('league');
+    }
+  </script>
+</body>
+</html>
