@@ -568,6 +568,10 @@
                 <i class="fa-solid fa-expand"></i>
               </button>
 
+              <button type="button" onclick="Match3D.toggleSound()" id="cam3dSoundBtn" class="absolute top-2 right-12 z-10 px-2 py-1.5 rounded-lg bg-slate-950/70 backdrop-blur border border-slate-700/60 text-slate-300 hover:text-emerald-400 text-[10px]" title="Crowd sound on / off">
+                <i class="fa-solid fa-volume-high"></i>
+              </button>
+
               <!-- Broadcast Scoreboard -->
               <div id="match3dScoreboard" class="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-stretch bg-slate-950/85 backdrop-blur rounded-lg border border-slate-700/70 overflow-hidden shadow-xl font-arcade text-[10px] sm:text-xs whitespace-nowrap">
                 <div class="flex items-center gap-1.5 px-2 py-1.5">
@@ -2016,7 +2020,73 @@
       let ballLock = 0;                    // seconds where match targets are ignored
       let spinAxis = null, lastBallX = 0, lastBallZ = 0;
 
+      // Crowd
+      let crowd = null, crowdBaseY = null, crowdPhase = null, excitement = 0, crowdAcc = 0;
+
+      // Players jog a warm-up circuit until the match kicks off
+      let warmup = true;
+
       function stage() { return document.getElementById('match3dStage'); }
+
+      /* ---------- crowd sound (synthesised, so nothing has to be downloaded) ---------- */
+      let audioCtx = null, crowdGain = null, crowdFilter = null, soundOn = true;
+      const BASE_VOLUME = 0.035;
+
+      function initAudio() {
+        if (audioCtx) return;
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+
+        try {
+          audioCtx = new Ctx();
+
+          // Brown noise loop reads as a stadium murmur
+          const len = audioCtx.sampleRate * 2;
+          const buffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+          const data = buffer.getChannelData(0);
+          let last = 0;
+          for (let i = 0; i < len; i++) {
+            const white = Math.random() * 2 - 1;
+            last = (last + 0.02 * white) / 1.02;
+            data[i] = last * 3.5;
+          }
+
+          const source = audioCtx.createBufferSource();
+          source.buffer = buffer;
+          source.loop = true;
+
+          crowdFilter = audioCtx.createBiquadFilter();
+          crowdFilter.type = 'bandpass';
+          crowdFilter.frequency.value = 480;
+          crowdFilter.Q.value = 0.7;
+
+          crowdGain = audioCtx.createGain();
+          crowdGain.gain.value = soundOn ? BASE_VOLUME : 0;
+
+          source.connect(crowdFilter);
+          crowdFilter.connect(crowdGain);
+          crowdGain.connect(audioCtx.destination);
+          source.start();
+        } catch (e) {
+          audioCtx = null;
+        }
+      }
+
+      // Swell the murmur into a roar, then let it settle back down
+      function cheer(intensity, duration) {
+        if (!audioCtx || !soundOn) return;
+        const now = audioCtx.currentTime;
+
+        crowdGain.gain.cancelScheduledValues(now);
+        crowdGain.gain.setValueAtTime(Math.max(crowdGain.gain.value, 0.001), now);
+        crowdGain.gain.linearRampToValueAtTime(BASE_VOLUME + 0.22 * intensity, now + 0.12);
+        crowdGain.gain.exponentialRampToValueAtTime(BASE_VOLUME, now + duration);
+
+        crowdFilter.frequency.cancelScheduledValues(now);
+        crowdFilter.frequency.setValueAtTime(crowdFilter.frequency.value, now);
+        crowdFilter.frequency.linearRampToValueAtTime(400 + 1100 * intensity, now + 0.15);
+        crowdFilter.frequency.exponentialRampToValueAtTime(480, now + duration);
+      }
 
       function pctToWorld(xPct, yPct) {
         return {
@@ -2224,24 +2294,7 @@
         scene.add(buildGoal(1));
         scene.add(buildGoal(-1));
 
-        // Stands with crowd
-        const crowd = new THREE.MeshBasicMaterial({ map: makeCrowdTexture() });
-        const standMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 1 });
-        const stands = [
-          { w: PLANE_W + 40, d: 16, x: 0, z: PLANE_H / 2 + 9, alongX: true },
-          { w: PLANE_W + 40, d: 16, x: 0, z: -(PLANE_H / 2 + 9), alongX: true },
-          { w: 16, d: PLANE_H + 8, x: PLANE_W / 2 + 16, z: 0, alongX: false },
-          { w: 16, d: PLANE_H + 8, x: -(PLANE_W / 2 + 16), z: 0, alongX: false }
-        ];
-        stands.forEach(s => {
-          // Box face order is +X, -X, +Y, -Y, +Z, -Z — put the crowd on the faces looking at the pitch
-          const mats = s.alongX
-            ? [standMat, standMat, standMat, standMat, crowd, crowd]
-            : [crowd, crowd, standMat, standMat, standMat, standMat];
-          const box = new THREE.Mesh(new THREE.BoxGeometry(s.w, 11, s.d), mats);
-          box.position.set(s.x, 5.5, s.z);
-          scene.add(box);
-        });
+        buildStands();
 
         // Floodlights
         [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([sx, sz]) => {
@@ -2279,6 +2332,113 @@
         scene.add(ballShadow);
 
         buildTeams();
+      }
+
+      // Terraced stands filled with individual supporters who bob and jump
+      function buildStands() {
+        const ROWS = 6, ROW_DEPTH = 2.2, ROW_RISE = 1.25, SEAT_GAP = 1.9;
+        const stepMat = new THREE.MeshStandardMaterial({ color: 0x131c2e, roughness: 1 });
+        const backMat = new THREE.MeshBasicMaterial({ map: makeCrowdTexture() });
+
+        const stands = [
+          { along: 'x', len: PLANE_W + 20, start: PLANE_H / 2 + 3, sign: 1 },
+          { along: 'x', len: PLANE_W + 20, start: PLANE_H / 2 + 3, sign: -1 },
+          { along: 'z', len: PLANE_H + 26, start: PLANE_W / 2 + 6, sign: 1 },
+          { along: 'z', len: PLANE_H + 26, start: PLANE_W / 2 + 6, sign: -1 }
+        ];
+
+        const seats = [];
+
+        stands.forEach(st => {
+          for (let r = 0; r < ROWS; r++) {
+            const depth = st.sign * (st.start + r * ROW_DEPTH + ROW_DEPTH / 2);
+            const h = (r + 1) * ROW_RISE;
+
+            const step = new THREE.Mesh(
+              st.along === 'x'
+                ? new THREE.BoxGeometry(st.len, h, ROW_DEPTH)
+                : new THREE.BoxGeometry(ROW_DEPTH, h, st.len),
+              stepMat
+            );
+            step.position.set(st.along === 'x' ? 0 : depth, h / 2, st.along === 'x' ? depth : 0);
+            scene.add(step);
+
+            const n = Math.floor(st.len / SEAT_GAP);
+            for (let i = 0; i < n; i++) {
+              const along = -st.len / 2 + (i + 0.5) * SEAT_GAP + (Math.random() - 0.5) * 0.5;
+              const jitter = (Math.random() - 0.5) * 0.5;
+              seats.push({
+                x: st.along === 'x' ? along : depth + jitter,
+                y: h,
+                z: st.along === 'x' ? depth + jitter : along
+              });
+            }
+          }
+
+          // Painted crowd on the back wall so the stands look deep
+          const backDepth = st.sign * (st.start + ROWS * ROW_DEPTH + 1.5);
+          const wall = new THREE.Mesh(
+            st.along === 'x'
+              ? new THREE.BoxGeometry(st.len, 10, 3)
+              : new THREE.BoxGeometry(3, 10, st.len),
+            backMat
+          );
+          wall.position.set(st.along === 'x' ? 0 : backDepth, 5, st.along === 'x' ? backDepth : 0);
+          scene.add(wall);
+        });
+
+        // A single instanced mesh keeps ~1500 supporters cheap to draw
+        const personGeo = new THREE.BoxGeometry(0.5, 1.15, 0.42);
+        personGeo.translate(0, 0.575, 0);   // pivot at the feet so they rise when they jump
+
+        crowd = new THREE.InstancedMesh(
+          personGeo,
+          new THREE.MeshStandardMaterial({ roughness: 0.9 }),
+          seats.length
+        );
+        crowd.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+        const dummy = new THREE.Object3D();
+        const tone = new THREE.Color();
+        const shirts = ['#e2e8f0', '#94a3b8', '#f59e0b', '#38bdf8', '#f43f5e', '#a855f7', '#22c55e', '#fbbf24'];
+
+        crowdBaseY = new Float32Array(seats.length);
+        crowdPhase = new Float32Array(seats.length);
+
+        seats.forEach((s, i) => {
+          dummy.position.set(s.x, s.y, s.z);
+          dummy.rotation.y = (Math.random() - 0.5) * 0.5;
+          dummy.updateMatrix();
+          crowd.setMatrixAt(i, dummy.matrix);
+          crowd.setColorAt(i, tone.set(shirts[(Math.random() * shirts.length) | 0]));
+          crowdBaseY[i] = s.y;
+          crowdPhase[i] = Math.random() * Math.PI * 2;
+        });
+
+        crowd.instanceMatrix.needsUpdate = true;
+        if (crowd.instanceColor) crowd.instanceColor.needsUpdate = true;
+        scene.add(crowd);
+      }
+
+      // Supporters sway gently, then leap when something happens
+      function updateCrowd(t, dt) {
+        if (!crowd) return;
+
+        excitement += (0 - excitement) * (1 - Math.exp(-0.9 * dt));
+
+        // Idle swaying does not need a full-rate buffer upload; celebrations do
+        crowdAcc += dt;
+        if (excitement < 0.05 && crowdAcc < 1 / 15) return;
+        crowdAcc = 0;
+
+        const amp = 0.08 + excitement * 0.65;
+        const speed = 3 + excitement * 6;
+        const arr = crowd.instanceMatrix.array;
+
+        for (let i = 0; i < crowdBaseY.length; i++) {
+          arr[i * 16 + 13] = crowdBaseY[i] + Math.abs(Math.sin(t * speed + crowdPhase[i])) * amp;
+        }
+        crowd.instanceMatrix.needsUpdate = true;
       }
 
       function buildTeams() {
@@ -2463,6 +2623,7 @@
           replayCursor += RECORD_HZ * REPLAY_SPEED * dt;
           if (replayCursor >= replayLen - 1) endReplay();
           pulseNets(t);
+          updateCrowd(t, dt);
           replayCamera(dt);
           return;
         }
@@ -2553,7 +2714,13 @@
           const wz = Math.cos(t * p.wSpeedZ + p.phase * 1.7) * 3.0;
 
           let tx, tz;
-          if (p.isGK) {
+          if (warmup) {
+            // Pre-match: jog a small circuit around your own position
+            const spin = t * (0.9 + p.wSpeedX) + p.phase;
+            const r = p.isGK ? 2.2 : 4.5;
+            tx = p.homeX + Math.cos(spin) * r;
+            tz = p.homeZ + Math.sin(spin) * r;
+          } else if (p.isGK) {
             tx = p.homeX + (bp.x - p.homeX) * 0.03;
             tz = Math.max(-7, Math.min(7, bp.z * 0.4));
           } else {
@@ -2644,6 +2811,7 @@
         });
 
         pulseNets(t);
+        updateCrowd(t, dt);
         updateCamera(t, bp, dt);
         recordFrame(dt);
       }
@@ -2844,6 +3012,7 @@
         },
 
         kickOff() {
+          warmup = true;          // back to warming up until the next match starts
           target.x = 0; target.z = 0;
           celebrate = 0;
           replayDelay = 0;
@@ -2860,11 +3029,38 @@
         goal(isUserGoal) {
           launchShot(isUserGoal ? 1 : -1, false);
           showFlash('GOAL!', 'rgba(16,185,129,0.95)');
+          excitement = 1;
+          cheer(1, 4.5);
         },
 
         save(isUserShot) {
           launchShot(isUserShot ? 1 : -1, true);
           showFlash('SAVED!', 'rgba(56,189,248,0.95)');
+          excitement = 0.7;
+          cheer(0.6, 2.6);
+        },
+
+        startAudio() {
+          initAudio();
+          if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        },
+
+        toggleSound() {
+          soundOn = !soundOn;
+          if (soundOn) {
+            initAudio();
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+          }
+          if (crowdGain && audioCtx) {
+            crowdGain.gain.cancelScheduledValues(audioCtx.currentTime);
+            crowdGain.gain.setValueAtTime(soundOn ? BASE_VOLUME : 0, audioCtx.currentTime);
+          }
+          const icon = document.querySelector('#cam3dSoundBtn i');
+          if (icon) icon.className = soundOn ? 'fa-solid fa-volume-high' : 'fa-solid fa-volume-xmark';
+        },
+
+        setWarmup(on) {
+          warmup = !!on;
         },
 
         setCamera(mode) {
@@ -2991,6 +3187,10 @@
 
       btn.disabled = true;
       btn.innerHTML = `<span>SIMULATING MATCH...</span>`;
+
+      // Clicking kick-off is the gesture browsers require before audio may play
+      Match3D.startAudio();
+      Match3D.setWarmup(false);
 
       let minute = 0;
       let userScore = 0;
