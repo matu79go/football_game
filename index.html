@@ -2008,8 +2008,10 @@
       // Ball physics: real velocity so it accelerates and slows like a rolling ball
       const BALL_MAX_SPEED = 16;           // world units per second
       const SHOT_DURATION = 0.85;          // seconds for a shot to reach the net
-      const KICK_DURATION = 0.55;          // seconds for the shooting animation
-      const KICK_WINDUP = 0.35;            // fraction of the kick before the foot connects
+      const KICK_DURATION = 0.65;          // seconds for the shooting animation
+      const KICK_BACK_END = 0.32;          // backswing finishes here
+      const KICK_SWING_END = 0.70;         // forward swing finishes here, recovery is slower
+      const KICK_CONTACT = (KICK_BACK_END + KICK_SWING_END) / 2;  // fastest point = ball struck
       const DIVE_DURATION = 1.2;           // seconds for a keeper dive
       const DEFLECT_DURATION = 0.7;        // seconds for a saved ball to bounce clear
       const ballVel = { x: 0, z: 0 };
@@ -2021,7 +2023,8 @@
       let spinAxis = null, lastBallX = 0, lastBallZ = 0;
 
       // Crowd
-      let crowd = null, crowdBaseY = null, crowdPhase = null, excitement = 0, crowdAcc = 0;
+      let crowdBody = null, crowdArms = null, excitement = 0, crowdAcc = 0;
+      let fanX = null, fanY = null, fanZ = null, fanPhase = null, fanSin = null, fanCos = null;
 
       // Players jog a warm-up circuit until the match kicks off
       let warmup = true;
@@ -2086,6 +2089,12 @@
         crowdFilter.frequency.setValueAtTime(crowdFilter.frequency.value, now);
         crowdFilter.frequency.linearRampToValueAtTime(400 + 1100 * intensity, now + 0.15);
         crowdFilter.frequency.exponentialRampToValueAtTime(480, now + duration);
+      }
+
+      // Eases in and out, reaching zero speed at both ends — no corners in the motion
+      function smoothstep(x) {
+        x = Math.max(0, Math.min(1, x));
+        return x * x * (3 - 2 * x);
       }
 
       function pctToWorld(xPct, yPct) {
@@ -2200,7 +2209,7 @@
         g.add(head);
 
         // Each limb hangs from a pivot at its joint, so rotating the pivot swings it
-        function limb(x, y, len, radius, mat, withBoot) {
+        function limb(x, y, len, radius, mat) {
           const pivot = new THREE.Group();
           pivot.position.set(x, y, 0);
 
@@ -2208,20 +2217,42 @@
           mesh.position.y = -len / 2;
           pivot.add(mesh);
 
-          if (withBoot) {
-            const boot = new THREE.Mesh(new THREE.BoxGeometry(radius * 2.2, 0.16, 0.44), boots);
-            boot.position.set(0, -len + 0.05, 0.1);
-            pivot.add(boot);
-          }
-
           g.add(pivot);
           return pivot;
         }
 
-        const legL = limb(-0.21, 1.05, 1.05, 0.17, shorts, true);
-        const legR = limb(0.21, 1.05, 1.05, 0.17, shorts, true);
-        const armL = limb(-0.56, 2.02, 0.92, 0.13, skin, false);
-        const armR = limb(0.56, 2.02, 0.92, 0.13, skin, false);
+        // Legs get a knee, so the shin can whip through on a kick
+        function leg(x) {
+          const THIGH = 0.55, SHIN = 0.5;
+
+          const hip = new THREE.Group();
+          hip.position.set(x, 1.05, 0);
+
+          const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.155, THIGH, 7), shorts);
+          thigh.position.y = -THIGH / 2;
+          hip.add(thigh);
+
+          const knee = new THREE.Group();
+          knee.position.y = -THIGH;
+          hip.add(knee);
+
+          const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.155, 0.13, SHIN, 7), skin);
+          shin.position.y = -SHIN / 2;
+          knee.add(shin);
+
+          const boot = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.16, 0.44), boots);
+          boot.position.set(0, -SHIN + 0.04, 0.11);
+          knee.add(boot);
+
+          g.add(hip);
+          hip.userData.knee = knee;
+          return hip;
+        }
+
+        const legL = leg(-0.21);
+        const legR = leg(0.21);
+        const armL = limb(-0.56, 2.02, 0.92, 0.13, skin);
+        const armR = limb(0.56, 2.02, 0.92, 0.13, skin);
 
         const shadow = new THREE.Mesh(
           new THREE.CircleGeometry(0.75, 14),
@@ -2231,7 +2262,7 @@
         shadow.position.y = 0.03;
         g.add(shadow);
 
-        g.userData = { kit, legL, legR, armL, armR };
+        g.userData = { kit, legL, legR, kneeL: legL.userData.knee, kneeR: legR.userData.knee, armL, armR };
         return g;
       }
 
@@ -2387,42 +2418,89 @@
           scene.add(wall);
         });
 
-        // A single instanced mesh keeps ~1500 supporters cheap to draw
-        const personGeo = new THREE.BoxGeometry(0.5, 1.15, 0.42);
-        personGeo.translate(0, 0.575, 0);   // pivot at the feet so they rise when they jump
+        // Two instanced meshes draw every supporter: bodies (with legs) and arms.
+        // Arms are separate so they can swing up independently of the jump.
+        const bodyGeo = mergeBoxes([
+          { w: 0.16, h: 0.55, d: 0.18, x: -0.12, y: 0.275, z: 0 },   // left leg
+          { w: 0.16, h: 0.55, d: 0.18, x: 0.12, y: 0.275, z: 0 },    // right leg
+          { w: 0.42, h: 0.55, d: 0.3, x: 0, y: 0.825, z: 0 },        // torso
+          { w: 0.26, h: 0.24, d: 0.24, x: 0, y: 1.22, z: 0 }         // head
+        ]);
+        const armGeo = mergeBoxes([
+          { w: 0.12, h: 0.5, d: 0.12, x: -0.26, y: -0.25, z: 0 },
+          { w: 0.12, h: 0.5, d: 0.12, x: 0.26, y: -0.25, z: 0 }
+        ]);
 
-        crowd = new THREE.InstancedMesh(
-          personGeo,
-          new THREE.MeshStandardMaterial({ roughness: 0.9 }),
-          seats.length
-        );
-        crowd.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        const n = seats.length;
+        crowdBody = new THREE.InstancedMesh(bodyGeo, new THREE.MeshStandardMaterial({ roughness: 0.9 }), n);
+        crowdArms = new THREE.InstancedMesh(armGeo, new THREE.MeshStandardMaterial({ color: 0xe8bb95, roughness: 0.9 }), n);
+        crowdBody.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        crowdArms.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
-        const dummy = new THREE.Object3D();
         const tone = new THREE.Color();
         const shirts = ['#e2e8f0', '#94a3b8', '#f59e0b', '#38bdf8', '#f43f5e', '#a855f7', '#22c55e', '#fbbf24'];
 
-        crowdBaseY = new Float32Array(seats.length);
-        crowdPhase = new Float32Array(seats.length);
+        fanX = new Float32Array(n);
+        fanY = new Float32Array(n);
+        fanZ = new Float32Array(n);
+        fanPhase = new Float32Array(n);
+        fanSin = new Float32Array(n);
+        fanCos = new Float32Array(n);
 
+        const bodyArr = crowdBody.instanceMatrix.array;
         seats.forEach((s, i) => {
-          dummy.position.set(s.x, s.y, s.z);
-          dummy.rotation.y = (Math.random() - 0.5) * 0.5;
-          dummy.updateMatrix();
-          crowd.setMatrixAt(i, dummy.matrix);
-          crowd.setColorAt(i, tone.set(shirts[(Math.random() * shirts.length) | 0]));
-          crowdBaseY[i] = s.y;
-          crowdPhase[i] = Math.random() * Math.PI * 2;
+          const yaw = (Math.random() - 0.5) * 0.5;
+          fanX[i] = s.x; fanY[i] = s.y; fanZ[i] = s.z;
+          fanPhase[i] = Math.random();
+          fanSin[i] = Math.sin(yaw);
+          fanCos[i] = Math.cos(yaw);
+
+          // Bodies only ever move up and down, so their matrix is written once
+          const o = i * 16;
+          bodyArr[o] = fanCos[i]; bodyArr[o + 2] = -fanSin[i];
+          bodyArr[o + 5] = 1;
+          bodyArr[o + 8] = fanSin[i]; bodyArr[o + 10] = fanCos[i];
+          bodyArr[o + 12] = s.x; bodyArr[o + 13] = s.y; bodyArr[o + 14] = s.z;
+          bodyArr[o + 15] = 1;
+
+          crowdBody.setColorAt(i, tone.set(shirts[(Math.random() * shirts.length) | 0]));
         });
 
-        crowd.instanceMatrix.needsUpdate = true;
-        if (crowd.instanceColor) crowd.instanceColor.needsUpdate = true;
-        scene.add(crowd);
+        crowdBody.instanceMatrix.needsUpdate = true;
+        if (crowdBody.instanceColor) crowdBody.instanceColor.needsUpdate = true;
+        scene.add(crowdBody);
+        scene.add(crowdArms);
       }
 
-      // Supporters sway gently, then leap when something happens
+      // Concatenate a few boxes into one geometry (the core build has no merge helper)
+      function mergeBoxes(parts) {
+        const geos = parts.map(p => {
+          const g = new THREE.BoxGeometry(p.w, p.h, p.d).toNonIndexed();
+          g.translate(p.x, p.y, p.z);
+          return g;
+        });
+
+        let total = 0;
+        geos.forEach(g => { total += g.attributes.position.count; });
+
+        const pos = new Float32Array(total * 3);
+        const nor = new Float32Array(total * 3);
+        let offset = 0;
+        geos.forEach(g => {
+          pos.set(g.attributes.position.array, offset * 3);
+          nor.set(g.attributes.normal.array, offset * 3);
+          offset += g.attributes.position.count;
+        });
+
+        const merged = new THREE.BufferGeometry();
+        merged.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        merged.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+        return merged;
+      }
+
+      // Supporters sway gently, then jump and throw their arms up when something happens
       function updateCrowd(t, dt) {
-        if (!crowd) return;
+        if (!crowdBody) return;
 
         excitement += (0 - excitement) * (1 - Math.exp(-0.9 * dt));
 
@@ -2431,14 +2509,44 @@
         if (excitement < 0.05 && crowdAcc < 1 / 15) return;
         crowdAcc = 0;
 
-        const amp = 0.08 + excitement * 0.65;
-        const speed = 3 + excitement * 6;
-        const arr = crowd.instanceMatrix.array;
+        const bodyArr = crowdBody.instanceMatrix.array;
+        const armArr = crowdArms.instanceMatrix.array;
 
-        for (let i = 0; i < crowdBaseY.length; i++) {
-          arr[i * 16 + 13] = crowdBaseY[i] + Math.abs(Math.sin(t * speed + crowdPhase[i])) * amp;
+        const rate = 0.9 + excitement * 1.3;   // hops per second
+        const height = excitement * 0.62;
+        const GROUND = 0.45;                   // fraction of each cycle spent on the ground
+        const SHOULDER = 1.02;
+
+        for (let i = 0; i < fanY.length; i++) {
+          // A hop is a smooth arc through the air with a pause between jumps,
+          // and a small crouch just before take-off
+          const cyc = (t * rate + fanPhase[i]) % 1;
+          let lift = 0, liftFrac = 0;
+          if (cyc > GROUND) {
+            liftFrac = Math.sin(Math.PI * (cyc - GROUND) / (1 - GROUND));
+            lift = liftFrac * height;
+          } else if (cyc > GROUND - 0.12) {
+            lift = -0.07 * height * Math.sin(Math.PI * (cyc - GROUND + 0.12) / 0.12);
+          }
+
+          const sway = Math.sin(t * 1.6 + fanPhase[i] * 6.28) * 0.045;
+          const y = fanY[i] + sway + lift;
+          bodyArr[i * 16 + 13] = y;
+
+          // Arms hang down when calm and punch the air when celebrating
+          const angle = -(0.1 + excitement * 2.55 + liftFrac * excitement * 0.5);
+          const sa = Math.sin(angle), ca = Math.cos(angle);
+          const sy = fanSin[i], cy = fanCos[i];
+
+          const o = i * 16;
+          armArr[o] = cy;      armArr[o + 4] = sy * sa;  armArr[o + 8] = sy * ca;  armArr[o + 12] = fanX[i];
+          armArr[o + 1] = 0;   armArr[o + 5] = ca;       armArr[o + 9] = -sa;      armArr[o + 13] = y + SHOULDER;
+          armArr[o + 2] = -sy; armArr[o + 6] = cy * sa;  armArr[o + 10] = cy * ca; armArr[o + 14] = fanZ[i];
+          armArr[o + 3] = 0;   armArr[o + 7] = 0;        armArr[o + 11] = 0;       armArr[o + 15] = 1;
         }
-        crowd.instanceMatrix.needsUpdate = true;
+
+        crowdBody.instanceMatrix.needsUpdate = true;
+        crowdArms.instanceMatrix.needsUpdate = true;
       }
 
       function buildTeams() {
@@ -2457,6 +2565,7 @@
             players.push({
               g, homeX, homeZ, isGK, dir,
               legL: g.userData.legL, legR: g.userData.legR,
+              kneeL: g.userData.kneeL, kneeR: g.userData.kneeR,
               armL: g.userData.armL, armR: g.userData.armR,
               pull: isGK ? 0.04 : 0.20 + (i % 3) * 0.05,
               wSpeedX: 0.25 + Math.random() * 0.3,
@@ -2469,8 +2578,8 @@
           });
         });
 
-        // Replay buffer: ball (x,y,z) + per player (x,y,z, yaw, lean + 4 limb angles)
-        frameSize = 3 + players.length * 9;
+        // Replay buffer: ball (x,y,z) + per player (x,y,z, yaw, lean + 6 limb angles)
+        frameSize = 3 + players.length * 11;
         ring = new Float32Array(REPLAY_FRAMES * frameSize);
         ringHead = 0;
         ringCount = 0;
@@ -2498,6 +2607,8 @@
           ring[o++] = p.g.rotation.z;
           ring[o++] = p.legL.rotation.x;
           ring[o++] = p.legR.rotation.x;
+          ring[o++] = p.kneeL.rotation.x;
+          ring[o++] = p.kneeR.rotation.x;
           ring[o++] = p.armL.rotation.x;
           ring[o++] = p.armR.rotation.x;
         }
@@ -2519,9 +2630,11 @@
           p.g.rotation.z = ring[o + 4];
           p.legL.rotation.x = ring[o + 5];
           p.legR.rotation.x = ring[o + 6];
-          p.armL.rotation.x = ring[o + 7];
-          p.armR.rotation.x = ring[o + 8];
-          o += 9;
+          p.kneeL.rotation.x = ring[o + 7];
+          p.kneeR.rotation.x = ring[o + 8];
+          p.armL.rotation.x = ring[o + 9];
+          p.armR.rotation.x = ring[o + 10];
+          o += 11;
         }
 
         ballShadow.position.set(ball.position.x, 0.04, ball.position.z);
@@ -2595,7 +2708,7 @@
           shotTo.x = netX;
           shotTo.z = netZ;
           shotState = 1;
-          shotTimer = KICK_DURATION * KICK_WINDUP;
+          shotTimer = KICK_DURATION * KICK_CONTACT;
           triggerKick(side, shotFrom.x, shotFrom.z, netX, netZ);
           triggerDive(side, netZ, saved);
         }
@@ -2751,33 +2864,54 @@
 
           p.legL.rotation.x = s * swing;
           p.legR.rotation.x = -s * swing;
+          p.kneeL.rotation.x = Math.max(0, s) * swing * 1.3;    // trailing heel tucks up
+          p.kneeR.rotation.x = Math.max(0, -s) * swing * 1.3;
           p.armL.rotation.x = -s * swing * 0.75;
           p.armR.rotation.x = s * swing * 0.75;
           g.position.y = Math.abs(s) * Math.min(moved * 0.7, 0.12);
 
-          // Shooting: run onto the ball, plant one foot, swing the other leg through it
+          // Shooting: run onto the ball, plant one foot, whip the other leg through it
           if (p.kick >= 0) {
             p.kick += dt / KICK_DURATION;
             const k = Math.min(p.kick, 1);
 
-            // Close the last stride to the ball before the foot connects
-            const approach = Math.min(k / KICK_WINDUP, 1);
-            const glide = 1 - Math.pow(1 - approach, 2);
+            // Close the last stride, arriving just as the foot comes through
+            const glide = smoothstep(k / KICK_CONTACT);
             g.position.x = p.kickFromX + (p.kickToX - p.kickFromX) * glide;
             g.position.z = p.kickFromZ + (p.kickToZ - p.kickFromZ) * glide;
 
-            const drive = k < KICK_WINDUP
-              ? (k / KICK_WINDUP) * 0.75                          // wind the leg back
-              : 0.75 - ((k - KICK_WINDUP) / (1 - KICK_WINDUP)) * 2.35;  // swing it through
+            // Each phase eases in and out, so the leg never changes speed abruptly.
+            // The forward swing is fastest at its midpoint — which is where the ball is struck.
+            let thigh, knee;
+            if (k < KICK_BACK_END) {
+              const u = smoothstep(k / KICK_BACK_END);
+              thigh = u * 0.9;                       // draw the leg back
+              knee = u * 1.4;                        // heel tucks up toward the hip
+            } else if (k < KICK_SWING_END) {
+              const u = smoothstep((k - KICK_BACK_END) / (KICK_SWING_END - KICK_BACK_END));
+              thigh = 0.9 - u * 1.9;                 // drive through the ball
+              knee = 1.4 - u * 1.3;                  // shin snaps straight
+            } else {
+              const u = smoothstep((k - KICK_SWING_END) / (1 - KICK_SWING_END));
+              thigh = -1.0 + u * 0.95;               // follow through and settle
+              knee = 0.1 + u * 0.2;
+            }
 
-            p.legR.rotation.x = drive;
-            p.legL.rotation.x = -0.18;
-            p.armL.rotation.x = -drive * 0.55;
-            p.armR.rotation.x = drive * 0.45;
+            p.legR.rotation.x = thigh;
+            p.kneeR.rotation.x = Math.max(0, knee);
+            p.legL.rotation.x = -0.15;               // standing leg stays planted
+            p.kneeL.rotation.x = 0.25;
+
+            p.armL.rotation.x = -thigh * 0.5;
+            p.armR.rotation.x = thigh * 0.35;
             g.rotation.y = p.kickAim;
+            g.rotation.z = thigh * 0.12;             // body leans with the swing
             g.position.y = 0;
 
-            if (k >= 1) p.kick = -1;
+            if (k >= 1) {
+              p.kick = -1;
+              g.rotation.z = 0;
+            }
           }
 
           // Goalkeeper dive: leap sideways, body horizontal, arms outstretched
@@ -2801,6 +2935,8 @@
             p.armR.rotation.x = -2.7 * env;
             p.legL.rotation.x = 0.35 * env;
             p.legR.rotation.x = -0.25 * env;
+            p.kneeL.rotation.x = 0.55 * env;
+            p.kneeR.rotation.x = 0.3 * env;
 
             if (k >= 1) {
               p.dive = -1;
