@@ -591,9 +591,9 @@
                 <i class="fa-solid fa-circle text-[7px] animate-pulse"></i> REPLAY
               </div>
 
-              <!-- Goal Flash -->
+              <!-- Goal / Save Flash -->
               <div id="match3dGoalFlash" class="absolute inset-0 z-20 flex items-center justify-center pointer-events-none opacity-0 transition-opacity duration-300">
-                <div class="font-arcade text-4xl sm:text-6xl font-black text-white tracking-widest" style="text-shadow: 0 0 25px rgba(16,185,129,0.95), 0 0 60px rgba(16,185,129,0.6);">GOAL!</div>
+                <div id="match3dFlashText" class="font-arcade text-4xl sm:text-6xl font-black text-white tracking-widest" style="text-shadow: 0 0 25px rgba(16,185,129,0.95), 0 0 60px rgba(16,185,129,0.6);">GOAL!</div>
               </div>
             </div>
 
@@ -2006,10 +2006,13 @@
       const SHOT_DURATION = 0.85;          // seconds for a shot to reach the net
       const KICK_DURATION = 0.55;          // seconds for the shooting animation
       const KICK_WINDUP = 0.35;            // fraction of the kick before the foot connects
+      const DIVE_DURATION = 1.2;           // seconds for a keeper dive
+      const DEFLECT_DURATION = 0.7;        // seconds for a saved ball to bounce clear
       const ballVel = { x: 0, z: 0 };
       const shotFrom = { x: 0, z: 0 }, shotTo = { x: 0, z: 0 };
-      let shotState = 0;                   // 0 = none, 1 = winding up, 2 = ball flying
+      let shotState = 0;                   // 0 = none, 1 = winding up, 2 = flying, 3 = deflected
       let shotTimer = 0;
+      let shotSaved = false;               // true when the keeper is going to stop this one
       let ballLock = 0;                    // seconds where match targets are ignored
       let spinAxis = null, lastBallX = 0, lastBallZ = 0;
 
@@ -2300,13 +2303,14 @@
               wSpeedZ: 0.22 + Math.random() * 0.3,
               phase: Math.random() * Math.PI * 2,
               cycle: Math.random() * Math.PI * 2,
-              kick: -1, kickAim: 0
+              kick: -1, kickAim: 0,
+              dive: -1, diveFromZ: 0, diveToZ: 0, diveYaw: 0, diveLean: 1
             });
           });
         });
 
-        // Replay buffer: ball (x,y,z) + per player (x,y,z,rotation + 4 limb angles)
-        frameSize = 3 + players.length * 8;
+        // Replay buffer: ball (x,y,z) + per player (x,y,z, yaw, lean + 4 limb angles)
+        frameSize = 3 + players.length * 9;
         ring = new Float32Array(REPLAY_FRAMES * frameSize);
         ringHead = 0;
         ringCount = 0;
@@ -2331,6 +2335,7 @@
           ring[o++] = p.g.position.y;
           ring[o++] = p.g.position.z;
           ring[o++] = p.g.rotation.y;
+          ring[o++] = p.g.rotation.z;
           ring[o++] = p.legL.rotation.x;
           ring[o++] = p.legR.rotation.x;
           ring[o++] = p.armL.rotation.x;
@@ -2351,11 +2356,12 @@
           const p = players[i];
           p.g.position.set(ring[o], ring[o + 1], ring[o + 2]);
           p.g.rotation.y = ring[o + 3];
-          p.legL.rotation.x = ring[o + 4];
-          p.legR.rotation.x = ring[o + 5];
-          p.armL.rotation.x = ring[o + 6];
-          p.armR.rotation.x = ring[o + 7];
-          o += 8;
+          p.g.rotation.z = ring[o + 4];
+          p.legL.rotation.x = ring[o + 5];
+          p.legR.rotation.x = ring[o + 6];
+          p.armL.rotation.x = ring[o + 7];
+          p.armR.rotation.x = ring[o + 8];
+          o += 9;
         }
 
         ballShadow.position.set(ball.position.x, 0.04, ball.position.z);
@@ -2393,8 +2399,50 @@
       }
 
       function pulseNets(t) {
-        const v = celebrate > 0 ? 0.22 + Math.abs(Math.sin(t * 14)) * 0.5 : 0.22;
+        const v = (celebrate > 0 && !shotSaved) ? 0.22 + Math.abs(Math.sin(t * 14)) * 0.5 : 0.22;
         nets.forEach(n => { n.opacity = v; });
+      }
+
+      function showFlash(text, glow) {
+        const flash = document.getElementById('match3dGoalFlash');
+        const label = document.getElementById('match3dFlashText');
+        if (!flash) return;
+
+        if (label) {
+          label.innerText = text;
+          label.style.textShadow = `0 0 25px ${glow}, 0 0 60px ${glow}`;
+        }
+        flash.style.opacity = '1';
+        clearTimeout(flash._t);
+        flash._t = setTimeout(() => { flash.style.opacity = '0'; }, 1300);
+      }
+
+      // Shared setup for a shot on goal, whether it ends up saved or scored
+      function launchShot(side, saved) {
+        celebrateSide = side;
+        shotSaved = saved;
+        celebrate = saved ? 1.6 : 2.4;
+        ballLock = saved ? 3.4 : 4.2;
+
+        const netX = side * (PLAY_L / 2 + 1.4);
+        const netZ = (Math.random() - 0.5) * 5;
+        target.x = netX;
+        target.z = netZ;
+
+        if (status === 'ready') {
+          shotFrom.x = ball.position.x;
+          shotFrom.z = ball.position.z;
+          shotTo.x = netX;
+          shotTo.z = netZ;
+          shotState = 1;
+          shotTimer = KICK_DURATION * KICK_WINDUP;
+          triggerKick(side, shotFrom.x, shotFrom.z, netX, netZ);
+          triggerDive(side, netZ, saved);
+        }
+
+        // A new shot mid-replay cuts back to live play
+        endReplay();
+        replayDelay = 1.6;
       }
 
       /* ---------- animation ---------- */
@@ -2434,7 +2482,7 @@
             shotFrom.z = bp.z;
           }
         } else if (shotState === 2) {
-          // Struck: arc the ball over the keeper and into the net
+          // Struck: arc the ball toward the goal
           shotTimer += dt;
           const k = Math.min(shotTimer / SHOT_DURATION, 1);
           const ease = 1 - Math.pow(1 - k, 2);
@@ -2442,7 +2490,33 @@
           bp.z = shotFrom.z + (shotTo.z - shotFrom.z) * ease;
           bp.y = 0.55 + Math.sin(Math.PI * k) * 2.4;
           ballVel.x = 0; ballVel.z = 0;
-          if (k >= 1) shotState = 0;
+
+          // The keeper gets a hand to it just before the line
+          if (shotSaved && k >= 0.7) {
+            shotState = 3;
+            shotTimer = 0;
+            shotFrom.x = bp.x;
+            shotFrom.z = bp.z;
+            shotTo.x = celebrateSide * (PLAY_L / 2 - 13);
+            shotTo.z = Math.max(-28, Math.min(28, bp.z + (bp.z >= 0 ? 9 : -9)));
+          } else if (k >= 1) {
+            shotState = 0;
+          }
+        } else if (shotState === 3) {
+          // Parried clear: the ball bounces away from goal
+          shotTimer += dt;
+          const k = Math.min(shotTimer / DEFLECT_DURATION, 1);
+          const ease = 1 - Math.pow(1 - k, 2);
+          bp.x = shotFrom.x + (shotTo.x - shotFrom.x) * ease;
+          bp.z = shotFrom.z + (shotTo.z - shotFrom.z) * ease;
+          bp.y = 0.55 + Math.abs(Math.sin(Math.PI * k * 2)) * 1.4 * (1 - k);
+          ballVel.x = 0; ballVel.z = 0;
+          if (k >= 1) {
+            shotState = 0;
+            target.x = bp.x;
+            target.z = bp.z;
+            ballLock = 0;   // play resumes from where the ball landed
+          }
         } else {
           // Roll toward the target, easing in and out like a real pass
           const dx = target.x - bp.x, dz = target.z - bp.z;
@@ -2538,11 +2612,65 @@
 
             if (k >= 1) p.kick = -1;
           }
+
+          // Goalkeeper dive: leap sideways, body horizontal, arms outstretched
+          if (p.dive >= 0) {
+            p.dive += dt / DIVE_DURATION;
+            const k = Math.min(p.dive, 1);
+
+            let env;
+            if (k < 0.35) env = k / 0.35;            // launch
+            else if (k < 0.7) env = 1;               // fully extended
+            else env = 1 - (k - 0.7) / 0.3;          // land and get up
+            env = Math.max(0, env);
+
+            const reach = Math.min(k / 0.45, 1);
+            g.position.z = p.diveFromZ + (p.diveToZ - p.diveFromZ) * reach;
+            g.position.y = Math.sin(Math.PI * Math.min(k / 0.8, 1)) * 0.75 * env;
+            g.rotation.y = p.diveYaw;
+            g.rotation.z = -p.diveLean * 1.35 * env;
+
+            p.armL.rotation.x = -2.7 * env;
+            p.armR.rotation.x = -2.7 * env;
+            p.legL.rotation.x = 0.35 * env;
+            p.legR.rotation.x = -0.25 * env;
+
+            if (k >= 1) {
+              p.dive = -1;
+              g.rotation.z = 0;
+              g.position.y = 0;
+            }
+          }
         });
 
         pulseNets(t);
         updateCamera(t, bp, dt);
         recordFrame(dt);
+      }
+
+      // The keeper defending this end throws himself at the ball
+      function triggerDive(side, ballZ, willSave) {
+        const keeper = players.find(p => p.isGK && p.dir === -side);
+        if (!keeper) return;
+
+        const g = keeper.g;
+        const goalX = side * (PLAY_L / 2);
+
+        // A save reaches the ball; a goal means he goes the wrong way
+        let toZ = willSave ? ballZ : (ballZ >= 0 ? -Math.abs(ballZ) - 2.5 : Math.abs(ballZ) + 2.5);
+        toZ = Math.max(-4.6, Math.min(4.6, toZ));
+
+        const yaw = Math.atan2(goalX * -1 - g.position.x, ballZ - g.position.z);
+        const dz = toZ - g.position.z;
+
+        // Work out whether that is a dive to his left or his right
+        const localX = -dz * Math.sin(yaw);
+
+        keeper.dive = 0;
+        keeper.diveFromZ = g.position.z;
+        keeper.diveToZ = toZ;
+        keeper.diveYaw = yaw;
+        keeper.diveLean = localX >= 0 ? 1 : -1;
       }
 
       // The attacker nearest the ball plays the shooting animation
@@ -2723,42 +2851,20 @@
           ballLock = 0;
           shotState = 0;
           shotTimer = 0;
+          shotSaved = false;
           ballVel.x = 0; ballVel.z = 0;
           endReplay();
           if (status === 'ready') ball.position.set(0, 0.55, 0);
         },
 
         goal(isUserGoal) {
-          celebrateSide = isUserGoal ? 1 : -1;
-          celebrate = 2.4;
+          launchShot(isUserGoal ? 1 : -1, false);
+          showFlash('GOAL!', 'rgba(16,185,129,0.95)');
+        },
 
-          // Fire the ball into the back of the net and hold it there
-          const netX = celebrateSide * (PLAY_L / 2 + 1.4);
-          const netZ = (Math.random() - 0.5) * 5;
-          target.x = netX;
-          target.z = netZ;
-          ballLock = 4.2;
-
-          if (status === 'ready') {
-            shotFrom.x = ball.position.x;
-            shotFrom.z = ball.position.z;
-            shotTo.x = netX;
-            shotTo.z = netZ;
-            shotState = 1;
-            shotTimer = KICK_DURATION * KICK_WINDUP;
-            triggerKick(celebrateSide, shotFrom.x, shotFrom.z, netX, netZ);
-          }
-
-          // A second goal mid-replay cuts back to live play
-          endReplay();
-          replayDelay = 1.6;
-
-          const flash = document.getElementById('match3dGoalFlash');
-          if (flash) {
-            flash.style.opacity = '1';
-            clearTimeout(flash._t);
-            flash._t = setTimeout(() => { flash.style.opacity = '0'; }, 1300);
-          }
+        save(isUserShot) {
+          launchShot(isUserShot ? 1 : -1, true);
+          showFlash('SAVED!', 'rgba(56,189,248,0.95)');
         },
 
         setCamera(mode) {
@@ -2874,6 +2980,11 @@
       }
     }
 
+    /* Every shot on goal is a coin flip with the keeper. Shots are frequent enough
+       that roughly the same number of goals still go in as before saves existed. */
+    const KEEPER_SAVE_CHANCE = 0.5;
+    const SHOT_CHANCE_PER_MINUTE = 0.11;
+
     function toggleMatchSimulation() {
       const btn = document.getElementById('startSimBtn');
       if (simInterval) return;
@@ -2899,11 +3010,16 @@
         document.getElementById('simTimeDisplay').innerText = `${minute}'`;
         Match3D.setClock(minute);
 
-        if (Math.random() < 0.06) {
+        if (Math.random() < SHOT_CHANCE_PER_MINUTE) {
           const userAdvantage = (userOvr - oppTeam.ovr) * 0.02;
-          const userGoalProb = 0.5 + userAdvantage;
+          const isUserShot = Math.random() < 0.5 + userAdvantage;
 
-          if (Math.random() < userGoalProb) {
+          if (Math.random() < KEEPER_SAVE_CHANCE) {
+            // The keeper gets down and keeps it out
+            const keeperClub = isUserShot ? oppTeam.name : gameState.clubName;
+            document.getElementById('simCommentaryFeed').innerText = `🧤 SAVED! Brilliant diving stop by the ${keeperClub} keeper! (${minute}')`;
+            Match3D.save(isUserShot);
+          } else if (isUserShot) {
             userScore++;
             document.getElementById('simScoreUser').innerText = userScore;
             Match3D.setScore(userScore, oppScore);
