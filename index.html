@@ -2190,80 +2190,174 @@
       }
 
       /* ---------- scene building ---------- */
-      function buildPlayer(colorHex, isGK) {
-        const g = new THREE.Group();
+      /* ---------- player model ---------- */
 
-        const kit = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(isGK ? '#facc15' : colorHex),
-          roughness: 0.75
+      // Merge several shapes into one geometry, baking each part's colour into its
+      // vertices. That keeps a detailed body down to one mesh per moving joint.
+      function mergeGeo(parts) {
+        const built = parts.map(p => {
+          const g = p.geo.toNonIndexed();
+          if (p.scale) g.scale(p.scale[0], p.scale[1], p.scale[2]);
+          if (p.rot) {
+            if (p.rot[0]) g.rotateX(p.rot[0]);
+            if (p.rot[1]) g.rotateY(p.rot[1]);
+            if (p.rot[2]) g.rotateZ(p.rot[2]);
+          }
+          if (p.pos) g.translate(p.pos[0], p.pos[1], p.pos[2]);
+          return { g, color: new THREE.Color(p.color) };
         });
-        const skin = new THREE.MeshStandardMaterial({ color: 0xf1c9a0, roughness: 0.9 });
-        const shorts = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.9 });
-        const boots = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.7 });
 
-        const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.42, 1.15, 10), kit);
-        torso.position.y = 1.58;
+        let total = 0;
+        built.forEach(b => { total += b.g.attributes.position.count; });
+
+        const pos = new Float32Array(total * 3);
+        const nor = new Float32Array(total * 3);
+        const col = new Float32Array(total * 3);
+        let off = 0;
+
+        built.forEach(({ g, color }) => {
+          const n = g.attributes.position.count;
+          pos.set(g.attributes.position.array, off * 3);
+          nor.set(g.attributes.normal.array, off * 3);
+          for (let i = 0; i < n; i++) {
+            col[(off + i) * 3] = color.r;
+            col[(off + i) * 3 + 1] = color.g;
+            col[(off + i) * 3 + 2] = color.b;
+          }
+          off += n;
+          g.dispose();
+        });
+
+        const merged = new THREE.BufferGeometry();
+        merged.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        merged.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+        merged.setAttribute('color', new THREE.BufferAttribute(col, 3));
+        return merged;
+      }
+
+      const SKIN_TONES = ['#f0c8a0', '#dda579', '#b57a48', '#7d4f2c', '#5a3620'];
+      const HAIR_COLORS = ['#171210', '#2b2b2b', '#3b2418', '#c8a94f', '#6b3f1c'];
+      const geoCache = new Map();
+
+      // Builds one set of body-part geometries for a given kit / skin / hair combination
+      function playerGeos(kit, skin, hair) {
+        const key = `${kit}|${skin}|${hair}`;
+        if (geoCache.has(key)) return geoCache.get(key);
+
+        const dark = '#1b2433';
+        const boot = '#12161f';
+        const eyeWhite = '#f4f4f5';
+        const eyeDark = '#241a14';
+
+        // Head: skull, jaw, ears, nose, brows, eyes and mouth, plus a hair cap
+        const head = mergeGeo([
+          { geo: new THREE.SphereGeometry(0.33, 16, 12), scale: [1, 1.1, 0.96], color: skin },
+          { geo: new THREE.SphereGeometry(0.21, 12, 10), scale: [1, 0.9, 1], pos: [0, -0.17, 0.06], color: skin },
+          { geo: new THREE.SphereGeometry(0.09, 8, 6), scale: [0.5, 1, 0.75], pos: [-0.31, 0.0, 0], color: skin },
+          { geo: new THREE.SphereGeometry(0.09, 8, 6), scale: [0.5, 1, 0.75], pos: [0.31, 0.0, 0], color: skin },
+          { geo: new THREE.ConeGeometry(0.07, 0.17, 7), rot: [Math.PI / 2, 0, 0], pos: [0, -0.02, 0.31], color: skin },
+          // The skull surface sits at z ~0.288 here, so the eyes sit just proud of it
+          { geo: new THREE.SphereGeometry(0.062, 10, 8), scale: [1.1, 0.8, 0.34], pos: [-0.125, 0.06, 0.281], color: eyeWhite },
+          { geo: new THREE.SphereGeometry(0.062, 10, 8), scale: [1.1, 0.8, 0.34], pos: [0.125, 0.06, 0.281], color: eyeWhite },
+          { geo: new THREE.SphereGeometry(0.032, 8, 6), scale: [1, 1, 0.5], pos: [-0.128, 0.06, 0.295], color: eyeDark },
+          { geo: new THREE.SphereGeometry(0.032, 8, 6), scale: [1, 1, 0.5], pos: [0.128, 0.06, 0.295], color: eyeDark },
+          { geo: new THREE.BoxGeometry(0.125, 0.026, 0.035), pos: [-0.13, 0.155, 0.278], color: hair },
+          { geo: new THREE.BoxGeometry(0.125, 0.026, 0.035), pos: [0.13, 0.155, 0.278], color: hair },
+          { geo: new THREE.BoxGeometry(0.13, 0.03, 0.03), pos: [0, -0.19, 0.28], color: '#8d4a45' },
+          { geo: new THREE.SphereGeometry(0.345, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.56), scale: [1, 1.08, 1], pos: [0, 0.01, -0.015], color: hair }
+        ]);
+
+        // Torso: a lathed profile so it narrows at the waist and widens at the chest
+        const profile = [[0.20, 0], [0.235, 0.10], [0.222, 0.28], [0.245, 0.48],
+                         [0.265, 0.70], [0.255, 0.86], [0.19, 0.97], [0.10, 1.03]]
+          .map(([r, y]) => new THREE.Vector2(r, y));
+
+        const torso = mergeGeo([
+          { geo: new THREE.LatheGeometry(profile, 14), scale: [1.4, 1, 0.86], color: kit },
+          { geo: new THREE.SphereGeometry(0.115, 10, 8), pos: [-0.30, 0.91, 0], color: kit },
+          { geo: new THREE.SphereGeometry(0.115, 10, 8), pos: [0.30, 0.91, 0], color: kit },
+          { geo: new THREE.CylinderGeometry(0.095, 0.105, 0.14, 9), pos: [0, 1.06, 0], color: skin }
+        ]);
+
+        const upperArm = mergeGeo([
+          { geo: new THREE.CylinderGeometry(0.095, 0.085, 0.18, 9), pos: [0, -0.09, 0], color: kit },
+          { geo: new THREE.CylinderGeometry(0.082, 0.068, 0.26, 9), pos: [0, -0.31, 0], color: skin }
+        ]);
+
+        const foreArm = mergeGeo([
+          { geo: new THREE.CylinderGeometry(0.068, 0.055, 0.34, 9), pos: [0, -0.17, 0], color: skin },
+          { geo: new THREE.SphereGeometry(0.075, 9, 7), scale: [0.85, 1.25, 0.55], pos: [0, -0.40, 0.01], color: skin }
+        ]);
+
+        const thigh = mergeGeo([
+          { geo: new THREE.CylinderGeometry(0.165, 0.15, 0.24, 10), pos: [0, -0.11, 0], color: dark },
+          { geo: new THREE.CylinderGeometry(0.128, 0.10, 0.30, 10), pos: [0, -0.37, 0], color: skin }
+        ]);
+
+        const shin = mergeGeo([
+          { geo: new THREE.CylinderGeometry(0.098, 0.072, 0.27, 9), pos: [0, -0.135, 0], color: skin },
+          { geo: new THREE.CylinderGeometry(0.083, 0.068, 0.20, 9), pos: [0, -0.37, 0], color: kit },
+          { geo: new THREE.BoxGeometry(0.14, 0.09, 0.24), pos: [0, -0.50, 0.05], color: boot },
+          { geo: new THREE.SphereGeometry(0.07, 8, 6), scale: [1, 0.62, 1.1], pos: [0, -0.50, 0.16], color: boot }
+        ]);
+
+        const set = { head, torso, upperArm, foreArm, thigh, shin };
+        geoCache.set(key, set);
+        return set;
+      }
+
+      function buildPlayerModel(kitHex, variant) {
+        const skin = SKIN_TONES[variant % SKIN_TONES.length];
+        const hair = HAIR_COLORS[(variant * 2) % HAIR_COLORS.length];
+        const geos = playerGeos(kitHex, skin, hair);
+        const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78 });
+
+        const g = new THREE.Group();
+        const HIP = 0.95, SHOULDER = 1.87;
+
+        const torso = new THREE.Mesh(geos.torso, mat);
+        torso.position.y = HIP;
         g.add(torso);
 
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 10), skin);
-        head.position.y = 2.45;
+        // The head geometry is modelled large for detail, then scaled to human proportions
+        const head = new THREE.Mesh(geos.head, mat);
+        head.scale.setScalar(0.62);
+        head.position.y = 2.28;
         g.add(head);
 
-        // Each limb hangs from a pivot at its joint, so rotating the pivot swings it
-        function limb(x, y, len, radius, mat) {
-          const pivot = new THREE.Group();
-          pivot.position.set(x, y, 0);
+        // Limbs: a joint group per segment, so each can rotate about its own pivot
+        function limb(x, y, upperGeo, lowerGeo, lowerDrop) {
+          const joint = new THREE.Group();
+          joint.position.set(x, y, 0);
+          joint.add(new THREE.Mesh(upperGeo, mat));
 
-          const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius * 0.85, len, 7), mat);
-          mesh.position.y = -len / 2;
-          pivot.add(mesh);
+          const hinge = new THREE.Group();
+          hinge.position.y = lowerDrop;
+          hinge.add(new THREE.Mesh(lowerGeo, mat));
+          joint.add(hinge);
 
-          g.add(pivot);
-          return pivot;
+          g.add(joint);
+          joint.userData.hinge = hinge;
+          return joint;
         }
 
-        // Legs get a knee, so the shin can whip through on a kick
-        function leg(x) {
-          const THIGH = 0.55, SHIN = 0.5;
-
-          const hip = new THREE.Group();
-          hip.position.set(x, 1.05, 0);
-
-          const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.155, THIGH, 7), shorts);
-          thigh.position.y = -THIGH / 2;
-          hip.add(thigh);
-
-          const knee = new THREE.Group();
-          knee.position.y = -THIGH;
-          hip.add(knee);
-
-          const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.155, 0.13, SHIN, 7), skin);
-          shin.position.y = -SHIN / 2;
-          knee.add(shin);
-
-          const boot = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.16, 0.44), boots);
-          boot.position.set(0, -SHIN + 0.04, 0.11);
-          knee.add(boot);
-
-          g.add(hip);
-          hip.userData.knee = knee;
-          return hip;
-        }
-
-        const legL = leg(-0.21);
-        const legR = leg(0.21);
-        const armL = limb(-0.56, 2.02, 0.92, 0.13, skin);
-        const armR = limb(0.56, 2.02, 0.92, 0.13, skin);
+        const armL = limb(-0.37, SHOULDER, geos.upperArm, geos.foreArm, -0.44);
+        const armR = limb(0.37, SHOULDER, geos.upperArm, geos.foreArm, -0.44);
+        const legL = limb(-0.17, HIP, geos.thigh, geos.shin, -0.52);
+        const legR = limb(0.17, HIP, geos.thigh, geos.shin, -0.52);
 
         const shadow = new THREE.Mesh(
-          new THREE.CircleGeometry(0.75, 14),
-          new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28 })
+          new THREE.CircleGeometry(0.7, 14),
+          new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 })
         );
         shadow.rotation.x = -Math.PI / 2;
         shadow.position.y = 0.03;
         g.add(shadow);
 
-        g.userData = { kit, legL, legR, kneeL: legL.userData.knee, kneeR: legR.userData.knee, armL, armR };
+        g.userData = {
+          legL, legR, kneeL: legL.userData.hinge, kneeR: legR.userData.hinge,
+          armL, armR, elbowL: armL.userData.hinge, elbowR: armR.userData.hinge
+        };
         return g;
       }
 
@@ -2557,7 +2651,9 @@
         [1, -1].forEach(dir => {
           const color = dir === 1 ? userColor : oppColor;
           FORMATION.forEach(([xf, zf, isGK], i) => {
-            const g = buildPlayer(color, isGK);
+            // Vary the look player by player so the teams do not look cloned
+            const variant = (i * 7 + (dir === 1 ? 0 : 3)) % SKIN_TONES.length;
+            const g = buildPlayerModel(isGK ? '#facc15' : color, variant);
             const homeX = xf * PLAY_L * dir;
             const homeZ = zf * PLAY_W;
             g.position.set(homeX, 0, homeZ);
@@ -2568,6 +2664,7 @@
               legL: g.userData.legL, legR: g.userData.legR,
               kneeL: g.userData.kneeL, kneeR: g.userData.kneeR,
               armL: g.userData.armL, armR: g.userData.armR,
+              elbowL: g.userData.elbowL, elbowR: g.userData.elbowR,
               pull: isGK ? 0.04 : 0.20 + (i % 3) * 0.05,
               wSpeedX: 0.25 + Math.random() * 0.3,
               wSpeedZ: 0.22 + Math.random() * 0.3,
@@ -2579,8 +2676,8 @@
           });
         });
 
-        // Replay buffer: ball (x,y,z) + per player (x,y,z, yaw, lean + 6 limb angles)
-        frameSize = 3 + players.length * 11;
+        // Replay buffer: ball (x,y,z) + per player (x,y,z, yaw, lean + 8 joint angles)
+        frameSize = 3 + players.length * 13;
         ring = new Float32Array(REPLAY_FRAMES * frameSize);
         ringHead = 0;
         ringCount = 0;
@@ -2612,6 +2709,8 @@
           ring[o++] = p.kneeR.rotation.x;
           ring[o++] = p.armL.rotation.x;
           ring[o++] = p.armR.rotation.x;
+          ring[o++] = p.elbowL.rotation.x;
+          ring[o++] = p.elbowR.rotation.x;
         }
         ringHead = (ringHead + 1) % REPLAY_FRAMES;
         if (ringCount < REPLAY_FRAMES) ringCount++;
@@ -2635,7 +2734,9 @@
           p.kneeR.rotation.x = ring[o + 8];
           p.armL.rotation.x = ring[o + 9];
           p.armR.rotation.x = ring[o + 10];
-          o += 11;
+          p.elbowL.rotation.x = ring[o + 11];
+          p.elbowR.rotation.x = ring[o + 12];
+          o += 13;
         }
 
         ballShadow.position.set(ball.position.x, 0.04, ball.position.z);
@@ -2881,6 +2982,8 @@
           p.kneeR.rotation.x = Math.max(0, -s) * swing * 1.3;
           p.armL.rotation.x = -s * swing * 0.75;
           p.armR.rotation.x = s * swing * 0.75;
+          p.elbowL.rotation.x = 0.35 + swing * 0.6;             // arms stay bent while running
+          p.elbowR.rotation.x = 0.35 + swing * 0.6;
           g.position.y = Math.abs(s) * Math.min(moved * 0.7, 0.12);
 
           // Shooting: run onto the ball, plant one foot, whip the other leg through it
@@ -2917,6 +3020,8 @@
 
             p.armL.rotation.x = -thigh * 0.5;
             p.armR.rotation.x = thigh * 0.35;
+            p.elbowL.rotation.x = 0.5;
+            p.elbowR.rotation.x = 0.4;
             g.rotation.y = p.kickAim;
             g.rotation.z = thigh * 0.12;             // body leans with the swing
             g.position.y = 0;
@@ -2946,6 +3051,8 @@
 
             p.armL.rotation.x = -2.7 * env;
             p.armR.rotation.x = -2.7 * env;
+            p.elbowL.rotation.x = 0.1;      // arms straight, reaching for the ball
+            p.elbowR.rotation.x = 0.1;
             p.legL.rotation.x = 0.35 * env;
             p.legR.rotation.x = -0.25 * env;
             p.kneeL.rotation.x = 0.55 * env;
