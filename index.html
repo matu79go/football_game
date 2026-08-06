@@ -564,6 +564,34 @@
               <button type="button" onclick="Match3D.toggleExpand()" id="cam3dExpandBtn" class="absolute top-2 right-2 z-10 px-2 py-1.5 rounded-lg bg-slate-950/70 backdrop-blur border border-slate-700/60 text-slate-300 hover:text-emerald-400 text-[10px]" title="Full screen">
                 <i class="fa-solid fa-expand"></i>
               </button>
+
+              <!-- Broadcast Scoreboard -->
+              <div id="match3dScoreboard" class="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-stretch bg-slate-950/85 backdrop-blur rounded-lg border border-slate-700/70 overflow-hidden shadow-xl font-arcade text-[10px] sm:text-xs whitespace-nowrap">
+                <div class="flex items-center gap-1.5 px-2 py-1.5">
+                  <span id="sb3dHomeColor" class="w-1.5 h-4 rounded-sm" style="background:#10b981;"></span>
+                  <span id="sb3dHomeName" class="font-bold text-white">HOME</span>
+                </div>
+                <div class="flex items-center px-2.5 py-1.5 bg-slate-900 border-x border-slate-700/70">
+                  <span id="sb3dScore" class="font-black text-white tracking-widest">0 - 0</span>
+                </div>
+                <div class="flex items-center gap-1.5 px-2 py-1.5">
+                  <span id="sb3dAwayName" class="font-bold text-white">AWAY</span>
+                  <span id="sb3dAwayColor" class="w-1.5 h-4 rounded-sm" style="background:#f43f5e;"></span>
+                </div>
+                <div class="flex items-center px-2 py-1.5 bg-amber-400 text-slate-950 font-black">
+                  <span id="sb3dClock">00'</span>
+                </div>
+              </div>
+
+              <!-- Instant Replay Badge -->
+              <div id="match3dReplayBadge" class="absolute top-2 left-1/2 -translate-x-1/2 z-20 px-3 py-1 rounded-full bg-rose-600/90 text-white font-arcade text-[10px] font-black tracking-widest items-center gap-1.5 shadow-lg" style="display: none;">
+                <i class="fa-solid fa-circle text-[7px] animate-pulse"></i> REPLAY
+              </div>
+
+              <!-- Goal Flash -->
+              <div id="match3dGoalFlash" class="absolute inset-0 z-20 flex items-center justify-center pointer-events-none opacity-0 transition-opacity duration-300">
+                <div class="font-arcade text-4xl sm:text-6xl font-black text-white tracking-widest" style="text-shadow: 0 0 25px rgba(16,185,129,0.95), 0 0 60px rgba(16,185,129,0.6);">GOAL!</div>
+              </div>
             </div>
 
             <!-- 2D Radar (fallback if 3D can't load) -->
@@ -1847,7 +1875,9 @@
       }
 
       Match3D.init();
-      Match3D.setTeams(gameState.primaryColor || '#10b981', teamColorFromName(oppTeam.name));
+      Match3D.setTeams(gameState.primaryColor || '#10b981', teamColorFromName(oppTeam.name), gameState.clubName, oppTeam.name);
+      Match3D.setScore(0, 0);
+      Match3D.setClock(0);
       Match3D.kickOff();
     }
 
@@ -1880,6 +1910,13 @@
       let players = [];
       let expanded = false, camMode = 'broadcast', celebrate = 0, celebrateSide = 1;
       let userColor = '#10b981', oppColor = '#f43f5e';
+      let prevT = 0;
+
+      // Instant replay: a rolling buffer of the last couple of seconds of play
+      const REPLAY_FRAMES = 130;
+      const REPLAY_SPEED = 0.6;            // < 1 means slow motion
+      let ring = null, frameSize = 0, ringHead = 0, ringCount = 0;
+      let replaying = false, replayCursor = 0, replayLen = 0, replayDelay = 0, replayAngle = 0;
 
       const target = { x: 0, z: 0 };
       const camPos = { x: 0, y: 30, z: 58 };
@@ -2149,10 +2186,105 @@
             });
           });
         });
+
+        // Replay buffer: ball (x,y,z) + every player (x,y,z,rotation)
+        frameSize = 3 + players.length * 4;
+        ring = new Float32Array(REPLAY_FRAMES * frameSize);
+        ringHead = 0;
+        ringCount = 0;
+      }
+
+      /* ---------- instant replay ---------- */
+      function recordFrame() {
+        if (!ring) return;
+        let o = ringHead * frameSize;
+        ring[o++] = ball.position.x;
+        ring[o++] = ball.position.y;
+        ring[o++] = ball.position.z;
+        for (let i = 0; i < players.length; i++) {
+          const g = players[i].g;
+          ring[o++] = g.position.x;
+          ring[o++] = g.position.y;
+          ring[o++] = g.position.z;
+          ring[o++] = g.rotation.y;
+        }
+        ringHead = (ringHead + 1) % REPLAY_FRAMES;
+        if (ringCount < REPLAY_FRAMES) ringCount++;
+      }
+
+      function applyReplayFrame(cursor) {
+        const oldest = ringHead - ringCount;
+        const slot = (oldest + Math.floor(cursor) + REPLAY_FRAMES * 2) % REPLAY_FRAMES;
+        let o = slot * frameSize;
+
+        ball.position.set(ring[o], ring[o + 1], ring[o + 2]);
+        o += 3;
+        for (let i = 0; i < players.length; i++) {
+          const g = players[i].g;
+          g.position.set(ring[o], ring[o + 1], ring[o + 2]);
+          g.rotation.y = ring[o + 3];
+          o += 4;
+        }
+
+        ballShadow.position.set(ball.position.x, 0.04, ball.position.z);
+      }
+
+      function startReplay() {
+        if (!ring || ringCount < 30) return;
+        replaying = true;
+        replayCursor = 0;
+        replayLen = ringCount;
+        replayAngle = 0;
+        const badge = document.getElementById('match3dReplayBadge');
+        if (badge) badge.style.display = 'flex';
+      }
+
+      function endReplay() {
+        replaying = false;
+        const badge = document.getElementById('match3dReplayBadge');
+        if (badge) badge.style.display = 'none';
+      }
+
+      // Replay uses a hard camera cut and orbits the action, TV-style
+      function replayCamera(dt) {
+        replayAngle += dt * 0.55;
+        const bp = ball.position;
+        const r = 22;
+        camera.position.set(
+          bp.x + celebrateSide * 12 + Math.cos(replayAngle) * r * 0.5,
+          8.5,
+          bp.z + Math.sin(replayAngle) * r
+        );
+        camera.lookAt(bp.x, 1.2, bp.z);
+      }
+
+      function pulseNets(t) {
+        const v = celebrate > 0 ? 0.22 + Math.abs(Math.sin(t * 14)) * 0.5 : 0.22;
+        nets.forEach(n => { n.opacity = v; });
       }
 
       /* ---------- animation ---------- */
       function updateScene(t) {
+        const dt = Math.min(t - prevT || 0.016, 0.05);
+        prevT = t;
+
+        if (celebrate > 0) celebrate -= dt;
+
+        if (replayDelay > 0) {
+          replayDelay -= dt;
+          if (replayDelay <= 0) startReplay();
+        }
+
+        // While replaying we play back recorded frames instead of simulating
+        if (replaying) {
+          applyReplayFrame(replayCursor);
+          replayCursor += REPLAY_SPEED;
+          if (replayCursor >= replayLen - 1) endReplay();
+          pulseNets(t);
+          replayCamera(dt);
+          return;
+        }
+
         const bp = ball.position;
 
         // Ball glides toward its target with a little bounce
@@ -2192,16 +2324,9 @@
           p.g.position.y = Math.abs(Math.sin(t * 7 + p.phase)) * Math.min(speed * 0.05, 0.3);
         });
 
-        // Net shimmer while celebrating a goal
-        if (celebrate > 0) {
-          celebrate -= 1 / 60;
-          const pulse = 0.22 + Math.abs(Math.sin(t * 14)) * 0.5;
-          nets.forEach(n => { n.opacity = pulse; });
-        } else {
-          nets.forEach(n => { n.opacity = 0.22; });
-        }
-
+        pulseNets(t);
         updateCamera(t, bp);
+        recordFrame();
       }
 
       function updateCamera(t, bp) {
@@ -2307,10 +2432,27 @@
           setTimeout(() => { if (status === 'loading') fail(); }, 12000);
         },
 
-        setTeams(uColor, oColor) {
+        setTeams(uColor, oColor, homeName, awayName) {
           userColor = uColor || userColor;
           oppColor = oColor || oppColor;
           if (status === 'ready') buildTeams();
+
+          const short = n => (n || '').toUpperCase().slice(0, 12);
+          const set = (id, fn) => { const el = document.getElementById(id); if (el) fn(el); };
+          set('sb3dHomeColor', el => { el.style.background = userColor; });
+          set('sb3dAwayColor', el => { el.style.background = oppColor; });
+          if (homeName) set('sb3dHomeName', el => { el.innerText = short(homeName); });
+          if (awayName) set('sb3dAwayName', el => { el.innerText = short(awayName); });
+        },
+
+        setScore(home, away) {
+          const el = document.getElementById('sb3dScore');
+          if (el) el.innerText = `${home} - ${away}`;
+        },
+
+        setClock(minute) {
+          const el = document.getElementById('sb3dClock');
+          if (el) el.innerText = `${String(minute).padStart(2, '0')}'`;
         },
 
         setBallTarget(xPct, yPct) {
@@ -2322,14 +2464,28 @@
         kickOff() {
           target.x = 0; target.z = 0;
           celebrate = 0;
+          replayDelay = 0;
+          ringCount = 0;
+          endReplay();
           if (status === 'ready') ball.position.set(0, 0.9, 0);
         },
 
         goal(isUserGoal) {
           celebrateSide = isUserGoal ? 1 : -1;
-          celebrate = 2.2;
+          celebrate = 2.4;
           target.x = celebrateSide * (PLAY_L / 2 - 0.5);
           target.z = (Math.random() - 0.5) * 5;
+
+          // A second goal mid-replay cuts back to live play
+          endReplay();
+          replayDelay = 1.4;
+
+          const flash = document.getElementById('match3dGoalFlash');
+          if (flash) {
+            flash.style.opacity = '1';
+            clearTimeout(flash._t);
+            flash._t = setTimeout(() => { flash.style.opacity = '0'; }, 1300);
+          }
         },
 
         setCamera(mode) {
@@ -2460,6 +2616,7 @@
       simInterval = setInterval(() => {
         minute++;
         document.getElementById('simTimeDisplay').innerText = `${minute}'`;
+        Match3D.setClock(minute);
 
         if (Math.random() < 0.06) {
           const userAdvantage = (userOvr - oppTeam.ovr) * 0.02;
@@ -2468,11 +2625,13 @@
           if (Math.random() < userGoalProb) {
             userScore++;
             document.getElementById('simScoreUser').innerText = userScore;
+            Match3D.setScore(userScore, oppScore);
             document.getElementById('simCommentaryFeed').innerText = `⚽ GOAL! Beautiful attack finishes in the net for ${gameState.clubName}! (${minute}')`;
             triggerGoalBallAnim(true);
           } else {
             oppScore++;
             document.getElementById('simScoreOpp').innerText = oppScore;
+            Match3D.setScore(userScore, oppScore);
             document.getElementById('simCommentaryFeed').innerText = `⚽ GOAL! ${oppTeam.name} counter-attacks and scores! (${minute}')`;
             triggerGoalBallAnim(false);
           }
