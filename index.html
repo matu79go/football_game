@@ -265,6 +265,9 @@
         </div>
 
         <div class="flex items-center gap-2">
+          <button onclick="equipBestXI()" title="Automatically put your best card in every position" class="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-arcade font-extrabold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition active:scale-95 flex items-center gap-1.5">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> EQUIP BEST
+          </button>
           <button onclick="switchTab('market')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold text-xs rounded-xl transition border border-slate-700 flex items-center gap-1.5">
             <i class="fa-solid fa-store"></i> Buy Players
           </button>
@@ -1638,6 +1641,79 @@
 
     function closeSlotSelectorModal() {
       document.getElementById('slotSelectorModal').classList.add('hidden');
+    }
+
+    /* AUTO PICK: fill every slot with the strongest card you own */
+    const SQUAD_POSITIONS = ['GK', 'LB', 'LCB', 'RCB', 'RB', 'LCM', 'CAM', 'RCM', 'LW', 'ST', 'RW'];
+    const POS_GROUP = {
+      GK: 'GK',
+      LB: 'FB', RB: 'FB',
+      LCB: 'CB', RCB: 'CB',
+      LCM: 'CM', RCM: 'CM', CAM: 'CM',
+      LW: 'WING', RW: 'WING', ST: 'ST'
+    };
+    const GROUP_LINE = { GK: 'GK', FB: 'DEF', CB: 'DEF', CM: 'MID', WING: 'ATT', ST: 'ATT' };
+
+    // How good a player is in a given slot: rating, minus a penalty for playing out of position
+    function positionFitScore(player, slot) {
+      if (slot === 'GK' || player.pos === 'GK') {
+        return (slot === 'GK' && player.pos === 'GK') ? player.ovr + 5 : player.ovr - 30;
+      }
+      if (player.pos === slot) return player.ovr + 2;
+
+      const playerGroup = POS_GROUP[player.pos];
+      const slotGroup = POS_GROUP[slot];
+      if (playerGroup === slotGroup) return player.ovr;
+      if (GROUP_LINE[playerGroup] === GROUP_LINE[slotGroup]) return player.ovr - 4;
+      return player.ovr - 9;
+    }
+
+    function equipBestXI() {
+      const owned = gameState.marketOwned || [];
+      if (owned.length === 0) {
+        showToast('You have no players yet — buy some first!', '⚠️');
+        return;
+      }
+
+      const before = calculateSquadRating();
+
+      // Score every player/slot combination, then greedily take the best pairs
+      const pairs = [];
+      SQUAD_POSITIONS.forEach(slot => {
+        owned.forEach(player => pairs.push({ slot, player, score: positionFitScore(player, slot) }));
+      });
+      pairs.sort((a, b) => b.score - a.score);
+
+      const newSquad = {};
+      SQUAD_POSITIONS.forEach(slot => { newSquad[slot] = null; });
+      const usedPlayers = new Set();
+
+      pairs.forEach(({ slot, player }) => {
+        if (newSquad[slot] || usedPlayers.has(player.id)) return;
+        newSquad[slot] = player;
+        usedPlayers.add(player.id);
+      });
+
+      gameState.squad = newSquad;
+
+      saveGameProgress();
+      renderSquadPitch();
+      renderClubRoster();
+      updateHeaderUI();
+      if (!simInterval) prepareNextMatchUI();
+
+      const after = calculateSquadRating();
+      const filled = SQUAD_POSITIONS.filter(slot => newSquad[slot]).length;
+
+      if (filled < 11) {
+        showToast(`Best XI equipped — only ${filled}/11 spots filled. Buy more players!`, '⚠️');
+      } else if (after > before) {
+        showToast(`Best XI equipped! Squad OVR ${before} → ${after} (+${after - before})`, '⭐');
+      } else if (after === before) {
+        showToast('Your best XI was already on the pitch!', '✅');
+      } else {
+        showToast(`Best XI equipped. Squad OVR is now ${after}.`, '⭐');
+      }
     }
 
     /* TRANSFER MARKET HANDLERS */
