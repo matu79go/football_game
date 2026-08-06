@@ -2009,6 +2009,7 @@
       const KICK_BACK_END = 0.32;          // backswing finishes here
       const KICK_SWING_END = 0.70;         // forward swing finishes here, recovery is slower
       const KICK_CONTACT = (KICK_BACK_END + KICK_SWING_END) / 2;  // fastest point = ball struck
+      const LEG_REACH = 0.89;              // effective hip-to-boot reach once the knee flexes
       const DIVE_DURATION = 1.2;           // seconds for a keeper dive
       const DEFLECT_DURATION = 0.7;        // seconds for a saved ball to bounce clear
       const ballVel = { x: 0, z: 0 };
@@ -2985,8 +2986,18 @@
 
           // Run cycle: legs and arms swing in opposite pairs, faster the further they run
           const moved = step * posF;
-          p.cycle += moved * 1.5;
-          const swing = Math.min(0.1 + moved * 3.5, 0.8);
+
+          // How wide the legs open depends on how fast the player is actually running,
+          // not on how much ground was covered in one frame (which varies with framerate)
+          const speed = moved / Math.max(dt, 0.008);
+          const swing = Math.min(0.12 + speed * 0.075, 0.85);
+
+          // One step must cover exactly as much ground as the leg can sweep, or the
+          // planted foot slides. The leg reaches LEG_REACH * sin(swing) either side of
+          // the hip, so a full sweep is twice that, and half a cycle is PI of phase.
+          const stride = Math.min(Math.PI / (2 * LEG_REACH * Math.max(Math.sin(swing), 0.15)), 8);
+          p.cycle += moved * stride;
+
           const s = Math.sin(p.cycle);
           const c = Math.cos(p.cycle);
 
