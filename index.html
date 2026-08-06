@@ -1133,6 +1133,7 @@
           const parsed = JSON.parse(saved);
           if (parsed && typeof parsed === 'object') {
             gameState = { ...gameState, ...parsed };
+            migrateClubNames();
             document.getElementById('clubSetupModal')?.classList.add('hidden');
             showToast(`Welcome back! Career loaded (${gameState.clubName})`, "⚽");
             return true;
@@ -1180,6 +1181,7 @@
 
         if (parsed && parsed.clubName && parsed.squad) {
           gameState = { ...gameState, ...parsed };
+          migrateClubNames();
           saveGameProgress();
           
           document.getElementById('clubSetupModal')?.classList.add('hidden');
@@ -1831,13 +1833,7 @@
       const currentLeague = NATIONS_DATA[gameState.country].leagues[gameState.currentLeagueIndex];
       const baseOvr = currentLeague.avgRating;
 
-      const compClubs = [
-        gameState.clubName,
-        'FC Thunder', 'Real Strikers', 'Velocity United', 'Ironclad City',
-        'Titan Athletic', 'Solaris FC', 'Apex Predators', 'Vanguard XI', 'Dynamo Sporting',
-        'Metro FC', 'Olympia City', 'Royal Athletics', 'Phoenix FC', 'Zenith United',
-        'Atlas Wanderers', 'Starlight City', 'Valiant Sporting', 'Horizon United', 'Eclipse FC'
-      ];
+      const compClubs = [gameState.clubName, ...RIVAL_CLUBS];
 
       gameState.leagueTable = compClubs.map((name, idx) => ({
         pos: idx + 1,
@@ -3248,7 +3244,7 @@
           oppColor = oColor || oppColor;
           if (status === 'ready') buildTeams();
 
-          const short = n => (n || '').toUpperCase().slice(0, 12);
+          const short = n => SHORT_CLUB_NAMES[n] || (n || '').toUpperCase().slice(0, 12);
           const set = (id, fn) => { const el = document.getElementById(id); if (el) fn(el); };
           set('sb3dHomeColor', el => { el.style.background = userColor; });
           set('sb3dAwayColor', el => { el.style.background = oppColor; });
@@ -3440,6 +3436,39 @@
 
     /* Every shot on goal is a coin flip with the keeper. Shots are frequent enough
        that roughly the same number of goals still go in as before saves existed. */
+    /* The 19 clubs you play against each season */
+    const RIVAL_CLUBS = [
+      'Arsenal', 'Newcastle', 'Brighton', 'Tottenham', 'West Ham',
+      'Wolves', 'Liverpool', 'Leicester City', 'Manchester City', 'Manchester United',
+      'Aston Villa', 'Sunderland', 'Leeds United', 'Brentford', 'Fulham',
+      'Everton', 'Crystal Palace', 'Nottingham Forest', 'Southampton'
+    ];
+
+    // Careers saved before the rename keep their table, so swap the old names across
+    const OLD_RIVAL_CLUBS = [
+      'FC Thunder', 'Real Strikers', 'Velocity United', 'Ironclad City',
+      'Titan Athletic', 'Solaris FC', 'Apex Predators', 'Vanguard XI', 'Dynamo Sporting',
+      'Metro FC', 'Olympia City', 'Royal Athletics', 'Phoenix FC', 'Zenith United',
+      'Atlas Wanderers', 'Starlight City', 'Valiant Sporting', 'Horizon United', 'Eclipse FC'
+    ];
+
+    function migrateClubNames() {
+      if (!Array.isArray(gameState.leagueTable)) return;
+      gameState.leagueTable.forEach(team => {
+        const i = OLD_RIVAL_CLUBS.indexOf(team.name);
+        if (i !== -1) team.name = RIVAL_CLUBS[i];
+      });
+    }
+
+    // Broadcast scoreboards are narrow, so long clubs get their usual short form
+    const SHORT_CLUB_NAMES = {
+      'Manchester United': 'MAN UTD',
+      'Manchester City': 'MAN CITY',
+      'Nottingham Forest': 'NOTT FOREST',
+      'Crystal Palace': 'CRYSTAL PAL',
+      'Leicester City': 'LEICESTER'
+    };
+
     const KEEPER_SAVE_CHANCE = 0.5;
     const SHOT_CHANCE_PER_MINUTE = 0.11;
     const CURVE_SHOT_CHANCE = 0.2;   // one shot in five is bent round the keeper
