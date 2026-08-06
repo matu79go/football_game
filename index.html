@@ -539,11 +539,38 @@
               </div>
             </div>
 
-            <!-- 2D Pitch Radar Simulation -->
-            <div class="soccer-pitch h-36 rounded-xl relative border border-slate-800 overflow-hidden shadow-inner flex items-center justify-center">
+            <!-- 3D MATCH STADIUM -->
+            <div id="match3dStage" class="relative w-full h-56 sm:h-64 rounded-xl border border-slate-800 overflow-hidden shadow-inner bg-slate-950">
+              <canvas id="match3dCanvas" class="absolute inset-0 block w-full h-full"></canvas>
+
+              <div id="match3dLoading" class="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-slate-950/85 text-slate-400 text-[11px] font-bold tracking-wider">
+                <i class="fa-solid fa-futbol fa-spin text-emerald-400 text-2xl"></i>
+                <span>BUILDING 3D STADIUM...</span>
+              </div>
+
+              <!-- Camera Angle Switcher -->
+              <div class="absolute top-2 left-2 z-10 flex items-center gap-1 bg-slate-950/70 backdrop-blur p-1 rounded-lg border border-slate-700/60">
+                <button type="button" onclick="Match3D.setCamera('broadcast')" id="cam3dBtn-broadcast" class="px-2 py-1 rounded text-[9px] font-bold uppercase bg-emerald-500 text-slate-950" title="TV camera">
+                  <i class="fa-solid fa-tv"></i>
+                </button>
+                <button type="button" onclick="Match3D.setCamera('goal')" id="cam3dBtn-goal" class="px-2 py-1 rounded text-[9px] font-bold uppercase text-slate-400 hover:text-white" title="Behind the goal">
+                  <i class="fa-solid fa-futbol"></i>
+                </button>
+                <button type="button" onclick="Match3D.setCamera('aerial')" id="cam3dBtn-aerial" class="px-2 py-1 rounded text-[9px] font-bold uppercase text-slate-400 hover:text-white" title="Aerial tactics view">
+                  <i class="fa-solid fa-helicopter"></i>
+                </button>
+              </div>
+
+              <button type="button" onclick="Match3D.toggleExpand()" id="cam3dExpandBtn" class="absolute top-2 right-2 z-10 px-2 py-1.5 rounded-lg bg-slate-950/70 backdrop-blur border border-slate-700/60 text-slate-300 hover:text-emerald-400 text-[10px]" title="Full screen">
+                <i class="fa-solid fa-expand"></i>
+              </button>
+            </div>
+
+            <!-- 2D Radar (fallback if 3D can't load) -->
+            <div id="radar2dFallback" class="soccer-pitch h-36 rounded-xl relative border border-slate-800 overflow-hidden shadow-inner items-center justify-center" style="display: none;">
               <div class="absolute inset-2 pitch-line rounded pointer-events-none"></div>
               <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full pitch-circle pointer-events-none"></div>
-              
+
               <!-- Ball Radar Dot -->
               <div id="simBallDot" class="w-3.5 h-3.5 rounded-full bg-white border-2 border-emerald-400 shadow-lg absolute transform -translate-x-1/2 -translate-y-1/2" style="left: 50%; top: 50%; transition: left 0.25s cubic-bezier(0.25, 1, 0.5, 1), top 0.25s cubic-bezier(0.25, 1, 0.5, 1);"></div>
             </div>
@@ -1411,6 +1438,8 @@
 
       const activeElem = document.getElementById(`tab-${tabId}`);
       if (activeElem) activeElem.classList.remove('hidden');
+
+      if (tabId === 'league') Match3D.init();
     }
 
     /* SQUAD BUILDER & PITCH ENGINE */
@@ -1816,7 +1845,524 @@
         ball.style.left = '50%';
         ball.style.top = '50%';
       }
+
+      Match3D.init();
+      Match3D.setTeams(gameState.primaryColor || '#10b981', teamColorFromName(oppTeam.name));
+      Match3D.kickOff();
     }
+
+    /* Give every opponent club a consistent kit colour based on its name */
+    function teamColorFromName(name) {
+      const palette = ['#f43f5e', '#3b82f6', '#a855f7', '#f97316', '#e11d48', '#0ea5e9', '#8b5cf6', '#eab308'];
+      let hash = 0;
+      for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+      return palette[hash % palette.length];
+    }
+
+    /* 3D MATCH STADIUM ENGINE (Three.js, loaded on demand) */
+    const Match3D = (function () {
+      const THREE_CDN = 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js';
+
+      const PLANE_W = 116, PLANE_H = 74.6;   // full grass surface
+      const PLAY_L = 106, PLAY_W = 64.6;     // area inside the white lines
+
+      // 4-3-3 home positions as a fraction of the pitch, for the team attacking +X
+      const FORMATION = [
+        [-0.46, 0.00, true],
+        [-0.30, -0.34, false], [-0.35, -0.12, false], [-0.35, 0.12, false], [-0.30, 0.34, false],
+        [-0.12, -0.25, false], [-0.04, 0.00, false], [-0.12, 0.25, false],
+        [0.16, -0.34, false], [0.24, 0.00, false], [0.16, 0.34, false]
+      ];
+
+      let status = 'idle';                 // idle | loading | ready | failed
+      let renderer, scene, camera, rafId = null;
+      let ball, ballShadow, nets = [];
+      let players = [];
+      let expanded = false, camMode = 'broadcast', celebrate = 0, celebrateSide = 1;
+      let userColor = '#10b981', oppColor = '#f43f5e';
+
+      const target = { x: 0, z: 0 };
+      const camPos = { x: 0, y: 30, z: 58 };
+      const camLook = { x: 0, y: 0, z: 0 };
+
+      function stage() { return document.getElementById('match3dStage'); }
+
+      function pctToWorld(xPct, yPct) {
+        return {
+          x: (xPct / 100 - 0.5) * PLAY_L,
+          z: (yPct / 100 - 0.5) * PLAY_W
+        };
+      }
+
+      /* ---------- textures ---------- */
+      function makeTurfTexture() {
+        const c = document.createElement('canvas');
+        c.width = 1400; c.height = 900;
+        const ctx = c.getContext('2d');
+
+        const bands = 14, bw = c.width / bands;
+        for (let i = 0; i < bands; i++) {
+          ctx.fillStyle = i % 2 === 0 ? '#1f7d45' : '#1a6b3a';
+          ctx.fillRect(i * bw, 0, bw + 1, c.height);
+        }
+
+        // White markings (play area inset by 60px)
+        const m = 60, w = c.width - m * 2, h = c.height - m * 2;
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.lineWidth = 5;
+        ctx.strokeRect(m, m, w, h);
+
+        ctx.beginPath();
+        ctx.moveTo(c.width / 2, m);
+        ctx.lineTo(c.width / 2, c.height - m);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(c.width / 2, c.height / 2, 110, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.beginPath();
+        ctx.arc(c.width / 2, c.height / 2, 7, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Penalty & goal boxes on both ends
+        [0, 1].forEach(side => {
+          const pd = 200, ph = 460, gd = 68, gh = 212;
+          const px = side === 0 ? m : c.width - m - pd;
+          const gx = side === 0 ? m : c.width - m - gd;
+          ctx.strokeRect(px, c.height / 2 - ph / 2, pd, ph);
+          ctx.strokeRect(gx, c.height / 2 - gh / 2, gd, gh);
+
+          const spotX = side === 0 ? m + 140 : c.width - m - 140;
+          ctx.beginPath();
+          ctx.arc(spotX, c.height / 2, 6, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Penalty arc
+          ctx.beginPath();
+          ctx.arc(spotX, c.height / 2, 108,
+            side === 0 ? -Math.PI / 3 : Math.PI * 2 / 3,
+            side === 0 ? Math.PI / 3 : Math.PI * 4 / 3);
+          ctx.stroke();
+        });
+
+        // Corner arcs
+        [[m, m, 0], [c.width - m, m, Math.PI / 2], [m, c.height - m, -Math.PI / 2], [c.width - m, c.height - m, Math.PI]]
+          .forEach(([cx, cy, a]) => {
+            ctx.beginPath();
+            ctx.arc(cx, cy, 22, a, a + Math.PI / 2);
+            ctx.stroke();
+          });
+
+        const tex = new THREE.CanvasTexture(c);
+        tex.anisotropy = 4;
+        return tex;
+      }
+
+      function makeCrowdTexture() {
+        const c = document.createElement('canvas');
+        c.width = 256; c.height = 64;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#0b1220';
+        ctx.fillRect(0, 0, c.width, c.height);
+        const tones = ['#e2e8f0', '#94a3b8', '#f59e0b', '#38bdf8', '#64748b', '#f43f5e'];
+        for (let i = 0; i < 1600; i++) {
+          ctx.fillStyle = tones[(Math.random() * tones.length) | 0];
+          ctx.globalAlpha = 0.35 + Math.random() * 0.5;
+          ctx.fillRect(Math.random() * c.width, Math.random() * c.height, 2, 2);
+        }
+        const tex = new THREE.CanvasTexture(c);
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(8, 1);
+        return tex;
+      }
+
+      /* ---------- scene building ---------- */
+      function buildPlayer(colorHex, isGK) {
+        const g = new THREE.Group();
+
+        const kit = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(isGK ? '#facc15' : colorHex),
+          roughness: 0.75
+        });
+        const skin = new THREE.MeshStandardMaterial({ color: 0xf1c9a0, roughness: 0.9 });
+        const dark = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.9 });
+
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.5, 1.5, 10), kit);
+        body.position.y = 1.65;
+        g.add(body);
+
+        const legs = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.34, 1.0, 8), dark);
+        legs.position.y = 0.55;
+        g.add(legs);
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.36, 12, 10), skin);
+        head.position.y = 2.7;
+        g.add(head);
+
+        const shadow = new THREE.Mesh(
+          new THREE.CircleGeometry(0.75, 14),
+          new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28 })
+        );
+        shadow.rotation.x = -Math.PI / 2;
+        shadow.position.y = 0.03;
+        g.add(shadow);
+
+        g.userData.kit = kit;
+        return g;
+      }
+
+      function buildGoal(sideSign) {
+        const group = new THREE.Group();
+        const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+        const W = 8.4, H = 3.4, D = 2.6;
+
+        [-W / 2, W / 2].forEach(z => {
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, H, 8), white);
+          post.position.set(0, H / 2, z);
+          group.add(post);
+        });
+
+        const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, W, 8), white);
+        bar.rotation.x = Math.PI / 2;
+        bar.position.set(0, H, 0);
+        group.add(bar);
+
+        const net = new THREE.Mesh(
+          new THREE.BoxGeometry(D, H, W, 3, 4, 9),
+          new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.22 })
+        );
+        net.position.set(sideSign * D / 2, H / 2, 0);
+        group.add(net);
+        nets.push(net.material);
+
+        group.position.set(sideSign * (PLAY_L / 2), 0, 0);
+        return group;
+      }
+
+      function buildScene() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x05070d);
+        scene.fog = new THREE.Fog(0x05070d, 120, 260);
+
+        scene.add(new THREE.HemisphereLight(0xbfdbfe, 0x0b3d22, 0.85));
+        const key = new THREE.DirectionalLight(0xffffff, 0.9);
+        key.position.set(40, 70, 30);
+        scene.add(key);
+
+        // Ground surrounding the stadium (fills the gap between grass and stands)
+        const ground = new THREE.Mesh(
+          new THREE.PlaneGeometry(420, 420),
+          new THREE.MeshStandardMaterial({ color: 0x0c1424, roughness: 1 })
+        );
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -0.06;
+        scene.add(ground);
+
+        // Pitch
+        const pitch = new THREE.Mesh(
+          new THREE.PlaneGeometry(PLANE_W, PLANE_H),
+          new THREE.MeshStandardMaterial({ map: makeTurfTexture(), roughness: 0.95 })
+        );
+        pitch.rotation.x = -Math.PI / 2;
+        scene.add(pitch);
+
+        // Goals
+        scene.add(buildGoal(1));
+        scene.add(buildGoal(-1));
+
+        // Stands with crowd
+        const crowd = new THREE.MeshBasicMaterial({ map: makeCrowdTexture() });
+        const standMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 1 });
+        const stands = [
+          { w: PLANE_W + 40, d: 16, x: 0, z: PLANE_H / 2 + 9, alongX: true },
+          { w: PLANE_W + 40, d: 16, x: 0, z: -(PLANE_H / 2 + 9), alongX: true },
+          { w: 16, d: PLANE_H + 8, x: PLANE_W / 2 + 16, z: 0, alongX: false },
+          { w: 16, d: PLANE_H + 8, x: -(PLANE_W / 2 + 16), z: 0, alongX: false }
+        ];
+        stands.forEach(s => {
+          // Box face order is +X, -X, +Y, -Y, +Z, -Z — put the crowd on the faces looking at the pitch
+          const mats = s.alongX
+            ? [standMat, standMat, standMat, standMat, crowd, crowd]
+            : [crowd, crowd, standMat, standMat, standMat, standMat];
+          const box = new THREE.Mesh(new THREE.BoxGeometry(s.w, 11, s.d), mats);
+          box.position.set(s.x, 5.5, s.z);
+          scene.add(box);
+        });
+
+        // Floodlights
+        [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([sx, sz]) => {
+          const pole = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.5, 0.7, 30, 6),
+            new THREE.MeshStandardMaterial({ color: 0x334155 })
+          );
+          pole.position.set(sx * (PLANE_W / 2 + 14), 15, sz * (PLANE_H / 2 + 14));
+          scene.add(pole);
+
+          const lamp = new THREE.Mesh(
+            new THREE.BoxGeometry(7, 2.4, 1.4),
+            new THREE.MeshBasicMaterial({ color: 0xfffbe8 })
+          );
+          lamp.position.set(pole.position.x, 30, pole.position.z);
+          lamp.lookAt(0, 0, 0);
+          scene.add(lamp);
+        });
+
+        // Ball
+        ball = new THREE.Mesh(
+          new THREE.SphereGeometry(0.55, 16, 14),
+          new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 })
+        );
+        ball.position.set(0, 0.9, 0);
+        scene.add(ball);
+
+        ballShadow = new THREE.Mesh(
+          new THREE.CircleGeometry(0.55, 16),
+          new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 })
+        );
+        ballShadow.rotation.x = -Math.PI / 2;
+        ballShadow.position.y = 0.04;
+        scene.add(ballShadow);
+
+        buildTeams();
+      }
+
+      function buildTeams() {
+        players.forEach(p => scene.remove(p.g));
+        players = [];
+
+        [1, -1].forEach(dir => {
+          const color = dir === 1 ? userColor : oppColor;
+          FORMATION.forEach(([xf, zf, isGK], i) => {
+            const g = buildPlayer(color, isGK);
+            const homeX = xf * PLAY_L * dir;
+            const homeZ = zf * PLAY_W;
+            g.position.set(homeX, 0, homeZ);
+            g.rotation.y = dir === 1 ? Math.PI / 2 : -Math.PI / 2;
+            scene.add(g);
+            players.push({
+              g, homeX, homeZ, isGK, dir,
+              pull: isGK ? 0.04 : 0.20 + (i % 3) * 0.05,
+              wx: 0, wz: 0,
+              phase: Math.random() * Math.PI * 2
+            });
+          });
+        });
+      }
+
+      /* ---------- animation ---------- */
+      function updateScene(t) {
+        const bp = ball.position;
+
+        // Ball glides toward its target with a little bounce
+        const dx = target.x - bp.x, dz = target.z - bp.z;
+        const dist = Math.hypot(dx, dz);
+        bp.x += dx * 0.06;
+        bp.z += dz * 0.06;
+        bp.y = 0.55 + Math.abs(Math.sin(t * 5)) * Math.min(dist * 0.10, 2.6);
+        ball.rotation.x += dist * 0.012 + 0.02;
+        ball.rotation.z += 0.03;
+
+        ballShadow.position.set(bp.x, 0.04, bp.z);
+        const s = 1 - Math.min((bp.y - 0.55) / 6, 0.5);
+        ballShadow.scale.set(s, s, s);
+
+        // Players chase the ball around their formation slot
+        players.forEach(p => {
+          p.wx += (Math.random() - 0.5) * 0.35;
+          p.wz += (Math.random() - 0.5) * 0.35;
+          p.wx *= 0.94; p.wz *= 0.94;
+
+          let tx, tz;
+          if (p.isGK) {
+            tx = p.homeX + (bp.x - p.homeX) * 0.03;
+            tz = Math.max(-7, Math.min(7, bp.z * 0.4));
+          } else {
+            tx = p.homeX + (bp.x - p.homeX) * p.pull + p.wx;
+            tz = p.homeZ + (bp.z - p.homeZ) * p.pull + p.wz;
+          }
+
+          const mx = tx - p.g.position.x, mz = tz - p.g.position.z;
+          p.g.position.x += mx * 0.05;
+          p.g.position.z += mz * 0.05;
+
+          const speed = Math.hypot(mx, mz);
+          if (speed > 0.25) p.g.rotation.y = Math.atan2(mx, mz);
+          p.g.position.y = Math.abs(Math.sin(t * 7 + p.phase)) * Math.min(speed * 0.05, 0.3);
+        });
+
+        // Net shimmer while celebrating a goal
+        if (celebrate > 0) {
+          celebrate -= 1 / 60;
+          const pulse = 0.22 + Math.abs(Math.sin(t * 14)) * 0.5;
+          nets.forEach(n => { n.opacity = pulse; });
+        } else {
+          nets.forEach(n => { n.opacity = 0.22; });
+        }
+
+        updateCamera(t, bp);
+      }
+
+      function updateCamera(t, bp) {
+        let px, py, pz, lx, ly, lz;
+
+        if (camMode === 'aerial') {
+          px = bp.x * 0.15; py = 104; pz = 30;
+          lx = bp.x * 0.3; ly = 0; lz = bp.z * 0.2;
+        } else if (camMode === 'goal') {
+          px = celebrateSide * (PLAY_L / 2 + 8); py = 9; pz = 0;
+          lx = bp.x; ly = 1.5; lz = bp.z;
+        } else {
+          px = bp.x * 0.45; py = 38; pz = 58;
+          lx = bp.x * 0.7; ly = 0; lz = bp.z * 0.4;
+        }
+
+        // Goal celebration: push the camera in toward the action, plus a shake
+        if (celebrate > 0) {
+          const zoom = 0.82;
+          px = lx + (px - lx) * zoom;
+          py = ly + (py - ly) * zoom;
+          pz = lz + (pz - lz) * zoom;
+          px += Math.sin(t * 26) * 0.7;
+        }
+
+        camPos.x += (px - camPos.x) * 0.05;
+        camPos.y += (py - camPos.y) * 0.05;
+        camPos.z += (pz - camPos.z) * 0.05;
+        camLook.x += (lx - camLook.x) * 0.07;
+        camLook.y += (ly - camLook.y) * 0.07;
+        camLook.z += (lz - camLook.z) * 0.07;
+
+        camera.position.set(camPos.x, camPos.y, camPos.z);
+        camera.lookAt(camLook.x, camLook.y, camLook.z);
+      }
+
+      function loop() {
+        rafId = requestAnimationFrame(loop);
+        if (status !== 'ready' || document.hidden) return;
+
+        const leagueTab = document.getElementById('tab-league');
+        if (!expanded && leagueTab && leagueTab.classList.contains('hidden')) return;
+
+        resize();
+        updateScene(performance.now() / 1000);
+        renderer.render(scene, camera);
+      }
+
+      let lastW = 0, lastH = 0;
+      function resize() {
+        const el = stage();
+        if (!el) return;
+        const w = el.clientWidth, h = el.clientHeight;
+        if (!w || !h || (w === lastW && h === lastH)) return;
+        lastW = w; lastH = h;
+        renderer.setSize(w, h, false);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      }
+
+      function fail() {
+        status = 'failed';
+        const el = stage();
+        if (el) el.style.display = 'none';
+        const fb = document.getElementById('radar2dFallback');
+        if (fb) fb.style.display = 'flex';
+      }
+
+      function boot() {
+        try {
+          const canvas = document.getElementById('match3dCanvas');
+          renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+          renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+          camera = new THREE.PerspectiveCamera(48, 16 / 9, 0.5, 500);
+          camera.position.set(camPos.x, camPos.y, camPos.z);
+
+          buildScene();
+          status = 'ready';
+
+          const load = document.getElementById('match3dLoading');
+          if (load) load.style.display = 'none';
+
+          resize();
+          loop();
+        } catch (e) {
+          fail();
+        }
+      }
+
+      return {
+        init() {
+          if (status !== 'idle') return;
+          if (!document.getElementById('match3dCanvas')) return;
+          status = 'loading';
+
+          const s = document.createElement('script');
+          s.src = THREE_CDN;
+          s.onload = () => { window.THREE ? boot() : fail(); };
+          s.onerror = fail;
+          document.head.appendChild(s);
+
+          setTimeout(() => { if (status === 'loading') fail(); }, 12000);
+        },
+
+        setTeams(uColor, oColor) {
+          userColor = uColor || userColor;
+          oppColor = oColor || oppColor;
+          if (status === 'ready') buildTeams();
+        },
+
+        setBallTarget(xPct, yPct) {
+          const w = pctToWorld(xPct, yPct);
+          target.x = w.x;
+          target.z = w.z;
+        },
+
+        kickOff() {
+          target.x = 0; target.z = 0;
+          celebrate = 0;
+          if (status === 'ready') ball.position.set(0, 0.9, 0);
+        },
+
+        goal(isUserGoal) {
+          celebrateSide = isUserGoal ? 1 : -1;
+          celebrate = 2.2;
+          target.x = celebrateSide * (PLAY_L / 2 - 0.5);
+          target.z = (Math.random() - 0.5) * 5;
+        },
+
+        setCamera(mode) {
+          camMode = mode;
+          ['broadcast', 'goal', 'aerial'].forEach(m => {
+            const btn = document.getElementById(`cam3dBtn-${m}`);
+            if (!btn) return;
+            btn.className = (m === mode)
+              ? 'px-2 py-1 rounded text-[9px] font-bold uppercase bg-emerald-500 text-slate-950'
+              : 'px-2 py-1 rounded text-[9px] font-bold uppercase text-slate-400 hover:text-white';
+          });
+        },
+
+        toggleExpand() {
+          const el = stage();
+          if (!el) return;
+          expanded = !expanded;
+          el.className = expanded
+            ? 'fixed inset-0 z-[70] bg-slate-950 border-0 overflow-hidden'
+            : 'relative w-full h-56 sm:h-64 rounded-xl border border-slate-800 overflow-hidden shadow-inner bg-slate-950';
+          const icon = document.querySelector('#cam3dExpandBtn i');
+          if (icon) icon.className = expanded ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
+        },
+
+        isExpanded() { return expanded; }
+      };
+    })();
+
+    window.Match3D = Match3D;
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && Match3D.isExpanded()) Match3D.toggleExpand();
+    });
 
     /* SMOOTH FAST BALL PHYSICS RADAR ENGINE */
     function startBallAnimation() {
@@ -1848,10 +2394,13 @@
 
         ball.style.left = `${targetX}%`;
         ball.style.top = `${targetY}%`;
+        Match3D.setBallTarget(targetX, targetY);
       }, 280);
     }
 
     function triggerGoalBallAnim(isUserGoal) {
+      Match3D.goal(isUserGoal);
+
       const ball = document.getElementById('simBallDot');
       if (!ball) return;
 
@@ -1879,6 +2428,7 @@
         clearInterval(ballAnimInterval);
         ballAnimInterval = null;
       }
+      Match3D.setBallTarget(50, 50);
       const ball = document.getElementById('simBallDot');
       if (ball) {
         ball.style.transition = 'left 0.5s ease-out, top 0.5s ease-out';
