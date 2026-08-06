@@ -1951,7 +1951,8 @@
       }
 
       Match3D.init();
-      Match3D.setTeams(gameState.primaryColor || '#10b981', teamColorFromName(oppTeam.name), gameState.clubName, oppTeam.name);
+      const myKit = gameState.primaryColor || '#10b981';
+      Match3D.setTeams(myKit, kitForOpponent(oppTeam.name, myKit), gameState.clubName, oppTeam.name);
       Match3D.setScore(0, 0);
       Match3D.setClock(0);
       Match3D.kickOff();
@@ -2640,16 +2641,32 @@
         crowdArms.instanceMatrix.needsUpdate = true;
       }
 
+      // Pick the keeper shirt that stands out most from both teams
+      function keeperColor(a, b, avoid) {
+        const options = ['#facc15', '#22c55e', '#e879f9', '#f97316', '#0ea5e9', '#a855f7'];
+        let best = null, bestScore = -1;
+        options.forEach(c => {
+          if (avoid && colorDistance(c, avoid) < 70) return;
+          const score = Math.min(colorDistance(c, a), colorDistance(c, b));
+          if (score > bestScore) { bestScore = score; best = c; }
+        });
+        return best || '#facc15';
+      }
+
       function buildTeams() {
         players.forEach(p => scene.remove(p.g));
         players = [];
 
+        const userGK = keeperColor(userColor, oppColor, null);
+        const oppGK = keeperColor(oppColor, userColor, userGK);
+
         [1, -1].forEach(dir => {
           const color = dir === 1 ? userColor : oppColor;
+          const gkColor = dir === 1 ? userGK : oppGK;
           FORMATION.forEach(([xf, zf, isGK], i) => {
             // Vary the look player by player so the teams do not look cloned
             const variant = (i * 7 + (dir === 1 ? 0 : 3)) % SKIN_TONES.length;
-            const g = buildPlayerModel(isGK ? '#facc15' : color, variant);
+            const g = buildPlayerModel(isGK ? gkColor : color, variant);
             const homeX = xf * PLAY_L * dir;
             const homeZ = zf * PLAY_W;
             g.position.set(homeX, 0, homeZ);
@@ -3458,6 +3475,48 @@
         const i = OLD_RIVAL_CLUBS.indexOf(team.name);
         if (i !== -1) team.name = RIVAL_CLUBS[i];
       });
+    }
+
+    /* Each club's kit, plus an alternate worn when the home kit would clash with yours */
+    const CLUB_KITS = {
+      'Arsenal':           { home: '#ef0107', away: '#f2e9c7' },
+      'Newcastle':         { home: '#2f2f2f', away: '#7fd4f5' },
+      'Brighton':          { home: '#0057b8', away: '#efefef' },
+      'Tottenham':         { home: '#f2f2f2', away: '#16244f' },
+      'West Ham':          { home: '#7a263a', away: '#8fd3f4' },
+      'Wolves':            { home: '#fdb913', away: '#2d2d2d' },
+      'Liverpool':         { home: '#c8102e', away: '#0f5f4f' },
+      'Leicester City':    { home: '#003090', away: '#f6e04a' },
+      'Manchester City':   { home: '#6cabdd', away: '#5c1f33' },
+      'Manchester United': { home: '#da291c', away: '#efefef' },
+      'Aston Villa':       { home: '#670e36', away: '#9be6c9' },
+      'Sunderland':        { home: '#eb172b', away: '#2f3d55' },
+      'Leeds United':      { home: '#efefef', away: '#1d428a' },
+      'Brentford':         { home: '#e30613', away: '#2b2b2b' },
+      'Fulham':            { home: '#f2f2f2', away: '#8b1f3f' },
+      'Everton':           { home: '#003399', away: '#f7d154' },
+      'Crystal Palace':    { home: '#1b458f', away: '#efefef' },
+      'Nottingham Forest': { home: '#dd0000', away: '#efefef' },
+      'Southampton':       { home: '#d71920', away: '#f2f2f2' }
+    };
+
+    function hexToRgb(hex) {
+      const h = String(hex || '').replace('#', '');
+      const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+      const v = parseInt(full, 16);
+      return Number.isNaN(v) ? { r: 0, g: 0, b: 0 } : { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
+    }
+
+    function colorDistance(a, b) {
+      const x = hexToRgb(a), y = hexToRgb(b);
+      return Math.hypot(x.r - y.r, x.g - y.g, x.b - y.b);
+    }
+
+    // Opponents wear their real kit, switching to the alternate if it is too close to yours
+    function kitForOpponent(name, userColor) {
+      const kit = CLUB_KITS[name];
+      if (!kit) return teamColorFromName(name);
+      return colorDistance(kit.home, userColor) < 110 ? kit.away : kit.home;
     }
 
     // Broadcast scoreboards are narrow, so long clubs get their usual short form
