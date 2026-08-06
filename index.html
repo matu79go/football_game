@@ -2975,11 +2975,17 @@
           p.cycle += moved * 1.5;
           const swing = Math.min(0.1 + moved * 3.5, 0.8);
           const s = Math.sin(p.cycle);
+          const c = Math.cos(p.cycle);
 
+          // Thigh angle: positive swings the foot behind the player
           p.legL.rotation.x = s * swing;
           p.legR.rotation.x = -s * swing;
-          p.kneeL.rotation.x = Math.max(0, s) * swing * 1.3;    // trailing heel tucks up
-          p.kneeR.rotation.x = Math.max(0, -s) * swing * 1.3;
+
+          // The knee flexes while that leg is travelling forward through the air and
+          // straightens while it drives back against the ground. Bending it the other
+          // way round is what running backwards looks like.
+          p.kneeL.rotation.x = 0.12 + Math.pow((1 - c) / 2, 1.3) * swing * 1.8;
+          p.kneeR.rotation.x = 0.12 + Math.pow((1 + c) / 2, 1.3) * swing * 1.8;
           p.armL.rotation.x = -s * swing * 0.75;
           p.armR.rotation.x = s * swing * 0.75;
           p.elbowL.rotation.x = 0.35 + swing * 0.6;             // arms stay bent while running
