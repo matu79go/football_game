@@ -1988,15 +1988,27 @@
       let userColor = '#10b981', oppColor = '#f43f5e';
       let prevT = 0;
 
-      // Instant replay: a rolling buffer of the last couple of seconds of play
-      const REPLAY_FRAMES = 130;
+      // Instant replay: a rolling buffer of the last couple of seconds of play.
+      // Sampled at a fixed rate so the replay lasts the same time on any device.
+      const RECORD_HZ = 50;
+      const REPLAY_FRAMES = 110;           // 2.2 seconds of action
       const REPLAY_SPEED = 0.6;            // < 1 means slow motion
+      let recordAcc = 0;
       let ring = null, frameSize = 0, ringHead = 0, ringCount = 0;
       let replaying = false, replayCursor = 0, replayLen = 0, replayDelay = 0, replayAngle = 0;
 
       const target = { x: 0, z: 0 };
       const camPos = { x: 0, y: 30, z: 58 };
       const camLook = { x: 0, y: 0, z: 0 };
+
+      // Ball physics: real velocity so it accelerates and slows like a rolling ball
+      const BALL_MAX_SPEED = 16;           // world units per second
+      const SHOT_DURATION = 0.85;          // seconds for a shot to reach the net
+      const ballVel = { x: 0, z: 0 };
+      const shotFrom = { x: 0, z: 0 }, shotTo = { x: 0, z: 0 };
+      let shotTime = -1;                   // -1 = not shooting
+      let ballLock = 0;                    // seconds where match targets are ignored
+      let spinAxis = null, lastBallX = 0, lastBallZ = 0;
 
       function stage() { return document.getElementById('match3dStage'); }
 
@@ -2227,8 +2239,9 @@
           new THREE.SphereGeometry(0.55, 16, 14),
           new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 })
         );
-        ball.position.set(0, 0.9, 0);
+        ball.position.set(0, 0.55, 0);
         scene.add(ball);
+        spinAxis = new THREE.Vector3();
 
         ballShadow = new THREE.Mesh(
           new THREE.CircleGeometry(0.55, 16),
@@ -2257,7 +2270,8 @@
             players.push({
               g, homeX, homeZ, isGK, dir,
               pull: isGK ? 0.04 : 0.20 + (i % 3) * 0.05,
-              wx: 0, wz: 0,
+              wSpeedX: 0.25 + Math.random() * 0.3,
+              wSpeedZ: 0.22 + Math.random() * 0.3,
               phase: Math.random() * Math.PI * 2
             });
           });
@@ -2271,8 +2285,14 @@
       }
 
       /* ---------- instant replay ---------- */
-      function recordFrame() {
+      function recordFrame(dt) {
         if (!ring) return;
+
+        // Sample at a fixed rate so replays run the same length on any device
+        recordAcc += dt;
+        if (recordAcc < 1 / RECORD_HZ) return;
+        recordAcc = Math.min(recordAcc - 1 / RECORD_HZ, 1 / RECORD_HZ);
+
         let o = ringHead * frameSize;
         ring[o++] = ball.position.x;
         ring[o++] = ball.position.y;
@@ -2303,6 +2323,8 @@
         }
 
         ballShadow.position.set(ball.position.x, 0.04, ball.position.z);
+        lastBallX = ball.position.x;
+        lastBallZ = ball.position.z;
       }
 
       function startReplay() {
@@ -2354,7 +2376,7 @@
         // While replaying we play back recorded frames instead of simulating
         if (replaying) {
           applyReplayFrame(replayCursor);
-          replayCursor += REPLAY_SPEED;
+          replayCursor += RECORD_HZ * REPLAY_SPEED * dt;
           if (replayCursor >= replayLen - 1) endReplay();
           pulseNets(t);
           replayCamera(dt);
@@ -2362,50 +2384,98 @@
         }
 
         const bp = ball.position;
+        if (ballLock > 0) ballLock -= dt;
 
-        // Ball glides toward its target with a little bounce
-        const dx = target.x - bp.x, dz = target.z - bp.z;
-        const dist = Math.hypot(dx, dz);
-        bp.x += dx * 0.06;
-        bp.z += dz * 0.06;
-        bp.y = 0.55 + Math.abs(Math.sin(t * 5)) * Math.min(dist * 0.10, 2.6);
-        ball.rotation.x += dist * 0.012 + 0.02;
-        ball.rotation.z += 0.03;
+        if (shotTime >= 0) {
+          // Shot on goal: arc the ball over the keeper and into the net
+          shotTime += dt;
+          const k = Math.min(shotTime / SHOT_DURATION, 1);
+          const ease = 1 - Math.pow(1 - k, 2);
+          bp.x = shotFrom.x + (shotTo.x - shotFrom.x) * ease;
+          bp.z = shotFrom.z + (shotTo.z - shotFrom.z) * ease;
+          bp.y = 0.55 + Math.sin(Math.PI * k) * 2.4;
+          ballVel.x = 0; ballVel.z = 0;
+          if (k >= 1) shotTime = -1;
+        } else {
+          // Roll toward the target, easing in and out like a real pass
+          const dx = target.x - bp.x, dz = target.z - bp.z;
+          const d = Math.hypot(dx, dz);
+          const accel = 1 - Math.exp(-5 * dt);
+
+          if (d > 0.05) {
+            const want = Math.min(d * 1.8, BALL_MAX_SPEED);
+            ballVel.x += ((dx / d) * want - ballVel.x) * accel;
+            ballVel.z += ((dz / d) * want - ballVel.z) * accel;
+          } else {
+            const damp = Math.exp(-6 * dt);
+            ballVel.x *= damp; ballVel.z *= damp;
+          }
+
+          bp.x += ballVel.x * dt;
+          bp.z += ballVel.z * dt;
+          bp.y += (0.55 - bp.y) * (1 - Math.exp(-8 * dt));
+        }
+
+        spinBall();
 
         ballShadow.position.set(bp.x, 0.04, bp.z);
-        const s = 1 - Math.min((bp.y - 0.55) / 6, 0.5);
+        const s = Math.max(0.5, 1 - (bp.y - 0.55) / 8);
         ballShadow.scale.set(s, s, s);
 
         // Players chase the ball around their formation slot
+        const posF = 1 - Math.exp(-3.2 * dt);
+        const rotF = 1 - Math.exp(-9 * dt);
+
         players.forEach(p => {
-          p.wx += (Math.random() - 0.5) * 0.35;
-          p.wz += (Math.random() - 0.5) * 0.35;
-          p.wx *= 0.94; p.wz *= 0.94;
+          // Smooth drifting rather than per-frame random jitter
+          const wx = Math.sin(t * p.wSpeedX + p.phase) * 3.0;
+          const wz = Math.cos(t * p.wSpeedZ + p.phase * 1.7) * 3.0;
 
           let tx, tz;
           if (p.isGK) {
             tx = p.homeX + (bp.x - p.homeX) * 0.03;
             tz = Math.max(-7, Math.min(7, bp.z * 0.4));
           } else {
-            tx = p.homeX + (bp.x - p.homeX) * p.pull + p.wx;
-            tz = p.homeZ + (bp.z - p.homeZ) * p.pull + p.wz;
+            tx = p.homeX + (bp.x - p.homeX) * p.pull + wx;
+            tz = p.homeZ + (bp.z - p.homeZ) * p.pull + wz;
           }
 
-          const mx = tx - p.g.position.x, mz = tz - p.g.position.z;
-          p.g.position.x += mx * 0.05;
-          p.g.position.z += mz * 0.05;
+          const g = p.g;
+          const mx = tx - g.position.x, mz = tz - g.position.z;
+          const step = Math.hypot(mx, mz);
 
-          const speed = Math.hypot(mx, mz);
-          if (speed > 0.25) p.g.rotation.y = Math.atan2(mx, mz);
-          p.g.position.y = Math.abs(Math.sin(t * 7 + p.phase)) * Math.min(speed * 0.05, 0.3);
+          g.position.x += mx * posF;
+          g.position.z += mz * posF;
+
+          // Turn smoothly toward the direction of travel
+          if (step > 0.2) {
+            let diff = Math.atan2(mx, mz) - g.rotation.y;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            g.rotation.y += diff * rotF;
+          }
+          g.position.y = Math.abs(Math.sin(t * 7 + p.phase)) * Math.min(step * 0.05, 0.3);
         });
 
         pulseNets(t);
-        updateCamera(t, bp);
-        recordFrame();
+        updateCamera(t, bp, dt);
+        recordFrame(dt);
       }
 
-      function updateCamera(t, bp) {
+      // Roll the ball around the axis perpendicular to how far it just moved
+      function spinBall() {
+        const bp = ball.position;
+        const mvx = bp.x - lastBallX, mvz = bp.z - lastBallZ;
+        const mv = Math.hypot(mvx, mvz);
+        if (mv > 0.0001 && spinAxis) {
+          spinAxis.set(-mvz / mv, 0, mvx / mv);
+          ball.rotateOnWorldAxis(spinAxis, mv / 0.55);
+        }
+        lastBallX = bp.x;
+        lastBallZ = bp.z;
+      }
+
+      function updateCamera(t, bp, dt) {
         let px, py, pz, lx, ly, lz;
 
         if (camMode === 'aerial') {
@@ -2428,12 +2498,14 @@
           px += Math.sin(t * 26) * 0.7;
         }
 
-        camPos.x += (px - camPos.x) * 0.05;
-        camPos.y += (py - camPos.y) * 0.05;
-        camPos.z += (pz - camPos.z) * 0.05;
-        camLook.x += (lx - camLook.x) * 0.07;
-        camLook.y += (ly - camLook.y) * 0.07;
-        camLook.z += (lz - camLook.z) * 0.07;
+        const pf = 1 - Math.exp(-3.2 * dt);
+        const lf = 1 - Math.exp(-4.5 * dt);
+        camPos.x += (px - camPos.x) * pf;
+        camPos.y += (py - camPos.y) * pf;
+        camPos.z += (pz - camPos.z) * pf;
+        camLook.x += (lx - camLook.x) * lf;
+        camLook.y += (ly - camLook.y) * lf;
+        camLook.z += (lz - camLook.z) * lf;
 
         camera.position.set(camPos.x, camPos.y, camPos.z);
         camera.lookAt(camLook.x, camLook.y, camLook.z);
@@ -2532,6 +2604,7 @@
         },
 
         setBallTarget(xPct, yPct) {
+          if (ballLock > 0) return;   // keep the ball in the net while a goal is celebrated
           const w = pctToWorld(xPct, yPct);
           target.x = w.x;
           target.z = w.z;
@@ -2542,19 +2615,35 @@
           celebrate = 0;
           replayDelay = 0;
           ringCount = 0;
+          ballLock = 0;
+          shotTime = -1;
+          ballVel.x = 0; ballVel.z = 0;
           endReplay();
-          if (status === 'ready') ball.position.set(0, 0.9, 0);
+          if (status === 'ready') ball.position.set(0, 0.55, 0);
         },
 
         goal(isUserGoal) {
           celebrateSide = isUserGoal ? 1 : -1;
           celebrate = 2.4;
-          target.x = celebrateSide * (PLAY_L / 2 - 0.5);
-          target.z = (Math.random() - 0.5) * 5;
+
+          // Fire the ball into the back of the net and hold it there
+          const netX = celebrateSide * (PLAY_L / 2 + 1.4);
+          const netZ = (Math.random() - 0.5) * 5;
+          target.x = netX;
+          target.z = netZ;
+          ballLock = 4.2;
+
+          if (status === 'ready') {
+            shotFrom.x = ball.position.x;
+            shotFrom.z = ball.position.z;
+            shotTo.x = netX;
+            shotTo.z = netZ;
+            shotTime = 0;
+          }
 
           // A second goal mid-replay cuts back to live play
           endReplay();
-          replayDelay = 1.4;
+          replayDelay = 1.6;
 
           const flash = document.getElementById('match3dGoalFlash');
           if (flash) {
@@ -2600,13 +2689,13 @@
     function startBallAnimation() {
       if (ballAnimInterval) clearInterval(ballAnimInterval);
       const ball = document.getElementById('simBallDot');
-      if (!ball) return;
+      if (ball) {
+        ball.style.transition = 'left 0.8s ease-in-out, top 0.8s ease-in-out';
+      }
 
-      ball.style.transition = 'left 0.25s cubic-bezier(0.25, 1, 0.5, 1), top 0.25s cubic-bezier(0.25, 1, 0.5, 1)';
+      let lastX = 50, lastY = 50;
 
       ballAnimInterval = setInterval(() => {
-        if (!ball) return;
-
         let targetX, targetY;
         const flowRoll = Math.random();
 
@@ -2624,10 +2713,18 @@
           targetY = Math.floor(Math.random() * 60 + 20);
         }
 
-        ball.style.left = `${targetX}%`;
-        ball.style.top = `${targetY}%`;
+        // Move only partway toward the new zone so play flows instead of teleporting
+        targetX = Math.round(lastX + (targetX - lastX) * 0.55);
+        targetY = Math.round(lastY + (targetY - lastY) * 0.55);
+        lastX = targetX;
+        lastY = targetY;
+
+        if (ball) {
+          ball.style.left = `${targetX}%`;
+          ball.style.top = `${targetY}%`;
+        }
         Match3D.setBallTarget(targetX, targetY);
-      }, 280);
+      }, 800);
     }
 
     function triggerGoalBallAnim(isUserGoal) {
