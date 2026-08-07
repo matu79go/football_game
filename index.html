@@ -1063,6 +1063,9 @@
       marketOwned: [],
       leagueTable: [],
       seasonMatchCount: 1,
+      seasonGoals: {},          // goals scored this season, keyed by player id
+      clubRatingBonus: 0,       // permanent club rating earned by milestone scorers
+      fixtures: [],
       selectedTierFilter: 'ALL',
       activeTab: 'squad',
       simDurationSeconds: 15,
@@ -1503,7 +1506,8 @@
           count++;
         }
       });
-      return count === 11 ? Math.round(total / 11) : 60;
+      const base = count === 11 ? Math.round(total / 11) : 60;
+      return base + (gameState.clubRatingBonus || 0);
     }
 
     function updateHeaderUI() {
@@ -1593,6 +1597,9 @@
                   <span class="bg-slate-800 px-1.5 py-0.2 rounded font-mono text-slate-300">${player.pos}</span>
                   <span>${player.nation}</span>
                   <span class="text-emerald-400">${player.tier}</span>
+                  ${seasonGoalsFor(player) > 0
+                    ? `<span class="${seasonGoalsFor(player) >= GOLDEN_BOOT_GOALS ? 'text-amber-300 font-bold' : 'text-slate-300'}">⚽ ${seasonGoalsFor(player)}</span>`
+                    : ''}
                 </div>
               </div>
             </div>
@@ -3588,6 +3595,79 @@
       'Leicester City': 'LEICESTER'
     };
 
+    /* Score 20 in a season and the player's card is upgraded for good */
+    const GOLDEN_BOOT_GOALS = 20;
+    const GOLDEN_BOOT_OVR_BONUS = 5;
+    const GOLDEN_BOOT_CLUB_BONUS = 2;
+
+    // Strikers score most, defenders rarely, keepers never
+    const SCORER_WEIGHTS = { ST: 10, LW: 7, RW: 7, CAM: 6, LCM: 3, RCM: 3, LB: 1, RB: 1, LCB: 1, RCB: 1, GK: 0 };
+
+    function pickScorer() {
+      const candidates = [];
+      Object.keys(gameState.squad).forEach(pos => {
+        const player = gameState.squad[pos];
+        if (!player) return;
+        // Careful: the keeper's weight is 0, so a falsy check would fall back to 1
+        const posWeight = SCORER_WEIGHTS[pos] === undefined ? 1 : SCORER_WEIGHTS[pos];
+        const weight = posWeight * Math.max(1, player.ovr - 55);
+        if (weight > 0) candidates.push({ player, weight });
+      });
+      if (candidates.length === 0) return null;
+
+      let roll = Math.random() * candidates.reduce((sum, c) => sum + c.weight, 0);
+      for (const c of candidates) {
+        roll -= c.weight;
+        if (roll <= 0) return c.player;
+      }
+      return candidates[candidates.length - 1].player;
+    }
+
+    function recordGoal(player) {
+      if (!player) return 0;
+      if (!gameState.seasonGoals) gameState.seasonGoals = {};
+      gameState.seasonGoals[player.id] = (gameState.seasonGoals[player.id] || 0) + 1;
+      return gameState.seasonGoals[player.id];
+    }
+
+    function seasonGoalsFor(player) {
+      return (player && gameState.seasonGoals && gameState.seasonGoals[player.id]) || 0;
+    }
+
+    // Called at the end of a season; returns everyone who earned an upgrade
+    function applySeasonGoalUpgrades() {
+      const goals = gameState.seasonGoals || {};
+      const upgraded = [];
+
+      Object.keys(goals).forEach(id => {
+        if (goals[id] < GOLDEN_BOOT_GOALS) return;
+
+        // A reloaded career holds separate copies of a card in the squad and the
+        // roster, so upgrade every copy — but never the same object twice
+        const bumped = new Set();
+        let name = null;
+
+        const bump = player => {
+          if (!player || player.id !== id || bumped.has(player)) return;
+          bumped.add(player);
+          player.ovr = Math.min(99, player.ovr + GOLDEN_BOOT_OVR_BONUS);
+          name = player.name;
+        };
+
+        (gameState.marketOwned || []).forEach(bump);
+        Object.keys(gameState.squad).forEach(pos => bump(gameState.squad[pos]));
+
+        if (name) upgraded.push({ name, goals: goals[id] });
+      });
+
+      if (upgraded.length > 0) {
+        gameState.clubRatingBonus = (gameState.clubRatingBonus || 0) + upgraded.length * GOLDEN_BOOT_CLUB_BONUS;
+      }
+
+      gameState.seasonGoals = {};
+      return upgraded;
+    }
+
     const KEEPER_SAVE_CHANCE = 0.5;
     const SHOT_CHANCE_PER_MINUTE = 0.11;
     const CURVE_SHOT_CHANCE = 0.2;   // one shot in five is bent round the keeper
@@ -3648,9 +3728,19 @@
             userScore++;
             document.getElementById('simScoreUser').innerText = userScore;
             Match3D.setScore(userScore, oppScore);
+
+            const scorer = pickScorer();
+            const tally = recordGoal(scorer);
+            const who = scorer ? scorer.name : gameState.clubName;
+
             feed.innerText = curled
-              ? `⚽ GOAL! ${gameState.clubName} bend a stunning curling shot into the corner! (${minute}')`
-              : `⚽ GOAL! Beautiful attack finishes in the net for ${gameState.clubName}! (${minute}')`;
+              ? `⚽ GOAL! ${who} bends a stunning curling shot into the corner! (${minute}')`
+              : `⚽ GOAL! ${who} finishes it off for ${gameState.clubName}! (${minute}')`;
+
+            if (tally === GOLDEN_BOOT_GOALS) {
+              showToast(`${scorer.name} has hit ${GOLDEN_BOOT_GOALS} goals — upgrade at season end!`, '🌟');
+            }
+
             triggerGoalBallAnim(true, curled);
           } else {
             oppScore++;
@@ -3769,6 +3859,13 @@
 
       setTimeout(() => {
         let showPackNow = true;
+
+        // Reward the season's big scorers before the table is rebuilt
+        const upgraded = applySeasonGoalUpgrades();
+        if (upgraded.length > 0) {
+          const lines = upgraded.map(u => `${u.name} — ${u.goals} goals  →  +${GOLDEN_BOOT_OVR_BONUS} rating`);
+          alert(`🌟 GOLDEN BOOT!\n\n${lines.join('\n')}\n\nClub rating +${upgraded.length * GOLDEN_BOOT_CLUB_BONUS}!`);
+        }
 
         if (userRank === 1 && gameState.currentLeagueIndex === 3) {
           gameState.wonManagerOfYear = true;
