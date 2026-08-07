@@ -2028,6 +2028,9 @@
       // Players jog a warm-up circuit until the match kicks off
       let warmup = true;
 
+      // Quick matches skip replays and cut celebrations short
+      let quickMode = false;
+
       function stage() { return document.getElementById('match3dStage'); }
 
       /* ---------- crowd sound (synthesised, so nothing has to be downloaded) ---------- */
@@ -2811,8 +2814,8 @@
         celebrateSide = side;
         shotSaved = saved;
         shotBendDir = curled ? (Math.random() < 0.5 ? -1 : 1) : 0;
-        celebrate = saved ? 1.6 : 2.4;
-        ballLock = saved ? 3.4 : 4.2;
+        celebrate = quickMode ? 1.0 : (saved ? 1.6 : 2.4);
+        ballLock = quickMode ? (saved ? 1.7 : 2.0) : (saved ? 3.4 : 4.2);
 
         const netX = side * (PLAY_L / 2 + 1.4);
         const netZ = (Math.random() - 0.5) * 5;
@@ -2832,7 +2835,7 @@
 
         // A new shot mid-replay cuts back to live play
         endReplay();
-        replayDelay = 1.6;
+        replayDelay = quickMode ? 0 : 1.6;
       }
 
       /* ---------- animation ---------- */
@@ -3349,6 +3352,14 @@
           warmup = !!on;
         },
 
+        setQuickMode(on) {
+          quickMode = !!on;
+          if (quickMode) {
+            replayDelay = 0;
+            endReplay();
+          }
+        },
+
         setCamera(mode) {
           camMode = mode;
           ['broadcast', 'goal', 'aerial'].forEach(m => {
@@ -3565,9 +3576,15 @@
       startBallAnimation();
 
       const totalSteps = 90;
-      const tickMs = (gameState.simDurationSeconds * 1000) / totalSteps;
+      const durationMs = gameState.simDurationSeconds * 1000;
+      const tickMs = durationMs / totalSteps;
+      const startedAt = performance.now();
 
-      simInterval = setInterval(() => {
+      // A short match would otherwise spend longer showing slow-motion replays
+      // than actually playing, so they are skipped when the match is quick
+      Match3D.setQuickMode(gameState.simDurationSeconds <= 30);
+
+      function playMinute() {
         minute++;
         document.getElementById('simTimeDisplay').innerText = `${minute}'`;
         Match3D.setClock(minute);
@@ -3605,11 +3622,19 @@
         } else if (minute % 15 === 0) {
           document.getElementById('simCommentaryFeed').innerText = `Tense battle in midfield as both teams fight for possession... (${minute}')`;
         }
+      }
 
-        if (minute >= 90) {
+      simInterval = setInterval(() => {
+        // Drive the clock off real elapsed time rather than counting ticks, so a
+        // slow frame can never stretch the match past the duration you picked
+        const target = Math.min(totalSteps, Math.floor((performance.now() - startedAt) / durationMs * totalSteps));
+        while (minute < target) playMinute();
+
+        if (minute >= totalSteps) {
           clearInterval(simInterval);
           simInterval = null;
           stopBallAnimation();
+          Match3D.setQuickMode(false);
           btn.disabled = false;
           btn.innerHTML = `<i class="fa-solid fa-play"></i> <span>START MATCH</span>`;
 
