@@ -1331,8 +1331,24 @@
       return { ...pool[0], id: pool[0].id + '_' + Math.floor(Math.random() * 10000) };
     }
 
+    /* You can earn several packs at once, so they are queued and opened one
+       after another as each is claimed */
+    let packQueue = [];
+
+    function queuePack(pool, count, headline) {
+      packQueue.push({ pool, count, headline });
+      const modal = document.getElementById('packOpeningModal');
+      if (modal && modal.classList.contains('hidden')) openNextQueuedPack();
+    }
+
+    function openNextQueuedPack() {
+      const next = packQueue.shift();
+      if (next) openPack(next.pool, next.count, next.headline);
+    }
+
     function closePackOpeningModal() {
       document.getElementById('packOpeningModal').classList.add('hidden');
+      if (packQueue.length > 0) setTimeout(openNextQueuedPack, 300);
     }
 
     /* NAVIGATION & COUNTRY SETUP HANDLERS */
@@ -4024,6 +4040,13 @@
       setTimeout(() => {
         let showPackNow = true;
 
+        // Read the scoring charts before the upgrades wipe them for the new season
+        const leader = getTopScorers(1)[0];
+        const hadTopScorer = !!(leader && leader.isUser);
+        if (hadTopScorer) {
+          alert(`👑 GOLDEN BOOT WINNER!\n\n${leader.name} finished as the division's top scorer with ${leader.goals} goals.\n\nReward: 2 extra silver packs!`);
+        }
+
         // Reward the season's big scorers before the table is rebuilt
         const upgraded = applySeasonGoalUpgrades();
         if (upgraded.length > 0) {
@@ -4037,7 +4060,7 @@
           document.getElementById('nationalTeamOfferName').innerText = gameState.country;
           document.getElementById('managerAwardModal').classList.remove('hidden');
           // That modal fills the screen, so hand the pack over once it is dismissed
-          pendingSeasonPack = userRank;
+          pendingSeasonAwards = { rank: userRank, topScorer: hadTopScorer };
           showPackNow = false;
         } else if (userRank <= 3 && gameState.currentLeagueIndex < 3) {
           gameState.currentLeagueIndex++;
@@ -4063,33 +4086,37 @@
         renderLeagueTable();
         prepareNextMatchUI();
 
-        if (showPackNow) awardSeasonPack(userRank);
+        if (showPackNow) grantSeasonAwards(userRank, hadTopScorer);
       }, 500);
     }
 
-    let pendingSeasonPack = null;
+    let pendingSeasonAwards = null;
 
-    // Finishing in the top three earns a gold pack, anything lower earns a silver one
-    function awardSeasonPack(rank) {
+    // Finishing in the top three earns a gold pack, anything lower earns a silver
+    // one, and owning the division's top scorer earns two more silver packs
+    function grantSeasonAwards(rank, hadTopScorer) {
       const isTopThree = rank <= 3;
-      openPack(
+      queuePack(
         isTopThree ? GOLD_PACK_POOL : SILVER_PACK_POOL,
         SEASON_PACK_SIZE,
-        isTopThree
-          ? `🏅 TOP 3 FINISH — GOLD PACK!`
-          : `🥈 SEASON REWARD — SILVER PACK`
+        isTopThree ? `🏅 TOP 3 FINISH — GOLD PACK!` : `🥈 SEASON REWARD — SILVER PACK`
       );
+
+      if (hadTopScorer) {
+        queuePack(SILVER_PACK_POOL, SEASON_PACK_SIZE, `👑 LEAGUE TOP SCORER — SILVER PACK 1 OF 2`);
+        queuePack(SILVER_PACK_POOL, SEASON_PACK_SIZE, `👑 LEAGUE TOP SCORER — SILVER PACK 2 OF 2`);
+      }
     }
 
     function acceptNationalJobOffer() {
       document.getElementById('managerAwardModal').classList.add('hidden');
       alert(`🌎 CONGRATULATIONS! You are now the official Head Manager of ${gameState.country} for the 2026 World Cup & Nations League tournament!`);
 
-      // The award modal was covering the screen, so the pack waited its turn
-      if (pendingSeasonPack !== null) {
-        const rank = pendingSeasonPack;
-        pendingSeasonPack = null;
-        awardSeasonPack(rank);
+      // The award modal was covering the screen, so the packs waited their turn
+      if (pendingSeasonAwards !== null) {
+        const awards = pendingSeasonAwards;
+        pendingSeasonAwards = null;
+        grantSeasonAwards(awards.rank, awards.topScorer);
       }
     }
 
