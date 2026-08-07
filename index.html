@@ -1842,6 +1842,33 @@
         ovr: name === gameState.clubName ? calculateSquadRating() : Math.round(baseOvr + (Math.random() * 6 - 3)),
         p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0
       }));
+
+      buildSeasonFixtures();
+    }
+
+    /* The season's running order. Without a fixed list the opponent was picked by
+       position in the table, which is re-sorted after every match, so some clubs
+       came round again and again while others were never played at all. */
+    function buildSeasonFixtures() {
+      const names = gameState.leagueTable.filter(t => !t.isUser).map(t => t.name);
+      for (let i = names.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [names[i], names[j]] = [names[j], names[i]];
+      }
+      gameState.fixtures = names;
+    }
+
+    function getOpponentTeam() {
+      const rivals = gameState.leagueTable.filter(t => !t.isUser);
+      if (rivals.length === 0) return null;
+
+      // Older careers were saved before fixtures existed
+      if (!Array.isArray(gameState.fixtures) || gameState.fixtures.length !== rivals.length) {
+        buildSeasonFixtures();
+      }
+
+      const name = gameState.fixtures[(gameState.seasonMatchCount - 1) % gameState.fixtures.length];
+      return rivals.find(t => t.name === name) || rivals[0];
     }
 
     function renderLeagueTable() {
@@ -1909,10 +1936,8 @@
 
     function prepareNextMatchUI() {
       const userOvr = calculateSquadRating();
-      const oppTable = gameState.leagueTable.filter(t => !t.isUser);
-      if (oppTable.length === 0) return;
-
-      const oppTeam = oppTable[(gameState.seasonMatchCount - 1) % oppTable.length];
+      const oppTeam = getOpponentTeam();
+      if (!oppTeam) return;
 
       document.getElementById('simUserClubName').innerText = gameState.clubName;
       document.getElementById('simUserClubOvr').innerText = `OVR: ${userOvr}`;
@@ -3570,8 +3595,12 @@
       let oppScore = 0;
 
       const userOvr = calculateSquadRating();
-      const oppTable = gameState.leagueTable.filter(t => !t.isUser);
-      const oppTeam = oppTable[(gameState.seasonMatchCount - 1) % oppTable.length];
+      const oppTeam = getOpponentTeam();
+      if (!oppTeam) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-play"></i> <span>START MATCH</span>`;
+        return;
+      }
 
       startBallAnimation();
 
