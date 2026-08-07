@@ -670,7 +670,7 @@
       </div>
 
       <div id="packResultsStage" class="hidden space-y-5">
-        <div class="font-arcade text-lg font-bold text-amber-400">YOU UNLOCKED 7 CARDS!</div>
+        <div id="packResultsTitle" class="font-arcade text-lg font-bold text-amber-400">YOU UNLOCKED 7 CARDS!</div>
         <div id="packRevealedCardsGrid" class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5"></div>
         <button onclick="closePackOpeningModal()" class="px-8 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-arcade font-extrabold text-xs rounded-xl shadow-lg transition">
           CLAIM CARDS & CONTINUE
@@ -1024,6 +1024,11 @@
       { id: 'wcp_7', name: 'Harry Kane', pos: 'ST', ovr: 94, tier: 'WC_RUNNERS', price: 125000, nation: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' }
     ];
 
+    /* End-of-season reward packs: gold for a top-three finish, silver otherwise */
+    const SEASON_PACK_SIZE = 3;
+    const GOLD_PACK_POOL = MARKET_PLAYERS_DATABASE.filter(p => p.tier === 'GOLD');
+    const SILVER_PACK_POOL = MARKET_PLAYERS_DATABASE.filter(p => p.tier === 'SILVER');
+
     const ICON_PACK_POOL = [
       { id: 'icp_1', name: 'Lionel Messi (Prime)', pos: 'RW', ovr: 98, tier: 'PRIME', price: 250000, nation: '🇦🇷' },
       { id: 'icp_2', name: 'C. Ronaldo (Prime)', pos: 'ST', ovr: 98, tier: 'PRIME', price: 240000, nation: '🇵🇹' },
@@ -1215,6 +1220,11 @@
       saveGameProgress();
       updateHeaderUI();
 
+      openPack(packType === 'WC_PACK' ? WC_PACK_POOL : ICON_PACK_POOL, 7);
+    }
+
+    /* Deals a pack, adds the cards to your club and plays the reveal */
+    function openPack(sourcePool, count, headline) {
       const modal = document.getElementById('packOpeningModal');
       const stageOpening = document.getElementById('packOpeningStage');
       const stageResults = document.getElementById('packResultsStage');
@@ -1223,12 +1233,13 @@
       stageResults.classList.add('hidden');
       modal.classList.remove('hidden');
 
-      const sourcePool = packType === 'WC_PACK' ? WC_PACK_POOL : ICON_PACK_POOL;
       const pulledCards = [];
-
-      for (let i = 0; i < 7; i++) {
+      for (let i = 0; i < count; i++) {
         pulledCards.push(weightedRandomPull(sourcePool));
       }
+
+      const headlineEl = document.getElementById('packResultsTitle');
+      if (headlineEl) headlineEl.innerText = headline || `YOU UNLOCKED ${count} CARDS!`;
 
       pulledCards.forEach(card => {
         if (!gameState.marketOwned.some(p => p.id === card.id)) {
@@ -1247,6 +1258,8 @@
 
         pulledCards.forEach(card => {
           let cardStyle = "card-gold";
+          if (card.tier === 'SILVER') cardStyle = "card-silver";
+          if (card.tier === 'BRONZE') cardStyle = "card-bronze";
           if (card.tier === 'PRIME') cardStyle = "card-prime";
           if (card.tier === 'WC_WINNERS') cardStyle = "card-wc-winner";
 
@@ -3755,11 +3768,16 @@
       const userRank = gameState.leagueTable.findIndex(t => t.isUser) + 1;
 
       setTimeout(() => {
+        let showPackNow = true;
+
         if (userRank === 1 && gameState.currentLeagueIndex === 3) {
           gameState.wonManagerOfYear = true;
           gameState.isNationalCoach = true;
           document.getElementById('nationalTeamOfferName').innerText = gameState.country;
           document.getElementById('managerAwardModal').classList.remove('hidden');
+          // That modal fills the screen, so hand the pack over once it is dismissed
+          pendingSeasonPack = userRank;
+          showPackNow = false;
         } else if (userRank <= 3 && gameState.currentLeagueIndex < 3) {
           gameState.currentLeagueIndex++;
           alert(`🎉 SEASON OVER! You finished #${userRank} and secured PROMOTION to ${NATIONS_DATA[gameState.country].leagues[gameState.currentLeagueIndex].name}!`);
@@ -3783,12 +3801,35 @@
         updateHeaderUI();
         renderLeagueTable();
         prepareNextMatchUI();
+
+        if (showPackNow) awardSeasonPack(userRank);
       }, 500);
+    }
+
+    let pendingSeasonPack = null;
+
+    // Finishing in the top three earns a gold pack, anything lower earns a silver one
+    function awardSeasonPack(rank) {
+      const isTopThree = rank <= 3;
+      openPack(
+        isTopThree ? GOLD_PACK_POOL : SILVER_PACK_POOL,
+        SEASON_PACK_SIZE,
+        isTopThree
+          ? `🏅 TOP 3 FINISH — GOLD PACK!`
+          : `🥈 SEASON REWARD — SILVER PACK`
+      );
     }
 
     function acceptNationalJobOffer() {
       document.getElementById('managerAwardModal').classList.add('hidden');
       alert(`🌎 CONGRATULATIONS! You are now the official Head Manager of ${gameState.country} for the 2026 World Cup & Nations League tournament!`);
+
+      // The award modal was covering the screen, so the pack waited its turn
+      if (pendingSeasonPack !== null) {
+        const rank = pendingSeasonPack;
+        pendingSeasonPack = null;
+        awardSeasonPack(rank);
+      }
     }
 
     function closeMatchResultModal() {
