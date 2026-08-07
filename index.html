@@ -1064,6 +1064,8 @@
       leagueTable: [],
       seasonMatchCount: 1,
       seasonGoals: {},          // goals scored this season, keyed by player id
+      goldenPlayerId: null,     // who drew a twenty-goal season this year
+      goldenDecided: false,
       clubRatingBonus: 0,       // permanent club rating earned by milestone scorers
       fixtures: [],
       selectedTierFilter: 'ALL',
@@ -3603,15 +3605,61 @@
     // Strikers score most, defenders rarely, keepers never
     const SCORER_WEIGHTS = { ST: 10, LW: 7, RW: 7, CAM: 6, LCM: 3, RCM: 3, LB: 1, RB: 1, LCB: 1, RCB: 1, GK: 0 };
 
+    // A player's chance of having a twenty-goal season, by card rating
+    function goldenBootChance(ovr) {
+      if (ovr >= 91) return 0.20;
+      if (ovr === 90) return 0.15;
+      if (ovr >= 80) return 0.10;
+      return 0.07;
+    }
+
+    /* At most one player can have a twenty-goal season, because the team only
+       scores about 57 in a year and two players both reaching twenty would take
+       most of that. Players roll in order of how likely they are to score, so
+       the main striker gets his full chance first; the first to win takes it.
+       Everyone else is held at nineteen, so the winner always gets there. */
+    function goldenPlayerId() {
+      if (gameState.goldenDecided) return gameState.goldenPlayerId || null;
+
+      const ordered = Object.keys(gameState.squad)
+        .map(pos => ({ pos, player: gameState.squad[pos] }))
+        .filter(x => x.player && (SCORER_WEIGHTS[x.pos] || 0) > 0)
+        .sort((a, b) => SCORER_WEIGHTS[b.pos] * b.player.ovr - SCORER_WEIGHTS[a.pos] * a.player.ovr);
+
+      if (ordered.length === 0) return null;   // nothing to roll for yet
+
+      let winner = null;
+      for (const { player } of ordered) {
+        if (Math.random() < goldenBootChance(player.ovr)) { winner = player.id; break; }
+      }
+
+      gameState.goldenPlayerId = winner;
+      gameState.goldenDecided = true;
+      return winner;
+    }
+
+    function isGoldenSeason(player) {
+      return !!player && player.id === goldenPlayerId();
+    }
+
     function pickScorer() {
       const candidates = [];
       Object.keys(gameState.squad).forEach(pos => {
         const player = gameState.squad[pos];
         if (!player) return;
+
         // Careful: the keeper's weight is 0, so a falsy check would fall back to 1
         const posWeight = SCORER_WEIGHTS[pos] === undefined ? 1 : SCORER_WEIGHTS[pos];
-        const weight = posWeight * Math.max(1, player.ovr - 55);
-        if (weight > 0) candidates.push({ player, weight });
+        if (posWeight <= 0) return;
+
+        const golden = isGoldenSeason(player);
+
+        // Players not having a golden season stop one short of the milestone
+        if (!golden && seasonGoalsFor(player) >= GOLDEN_BOOT_GOALS - 1) return;
+
+        // A golden player outscores the rest of the squad, whatever position they play
+        const weight = (golden ? Math.max(posWeight, 12) * 3.5 : posWeight) * Math.max(1, player.ovr - 55);
+        candidates.push({ player, weight });
       });
       if (candidates.length === 0) return null;
 
@@ -3665,6 +3713,8 @@
       }
 
       gameState.seasonGoals = {};
+      gameState.goldenPlayerId = null;   // fresh roll next season
+      gameState.goldenDecided = false;
       return upgraded;
     }
 
